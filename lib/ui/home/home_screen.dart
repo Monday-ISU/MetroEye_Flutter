@@ -10,11 +10,13 @@ class HomeScreen extends StatefulWidget {
 class StationHit {
   final String line;
   final String station;
+
   const StationHit({required this.line, required this.station});
 }
 
 class _HomeScreenState extends State<HomeScreen> {
   static const String allLines = '전체노선';
+  final TextEditingController _searchControlloer = TextEditingController();
 
   static const List<String> lines = [
     allLines,
@@ -54,7 +56,7 @@ class _HomeScreenState extends State<HomeScreen> {
   };
 
   String selectedLine = allLines;
-  String query = '';
+  String stationQuery = '';
 
   Color iconColorForLine(String line) {
     if (line == allLines) return const Color(0xFF49729B);
@@ -62,7 +64,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   List<StationHit> filteredHits() {
-    final q = query.trim();
+    final q = stationQuery.trim();
     if (q.isEmpty) return const [];
 
     final hits = <StationHit>[];
@@ -97,33 +99,47 @@ class _HomeScreenState extends State<HomeScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            Text(
-              'MetroEye',
-              style: Theme.of(context).textTheme.titleMedium,
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Image.asset(
+                  'assets/icons/small_logo.png',
+                  width: 20,
+                  height: 20,
+                  fit: BoxFit.contain,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'MetroEye',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ],
             ),
+
             const SizedBox(height: 12),
 
-            // ✅ Dropdown도 "입력 폼"처럼 보이게: Flutter UI 일관성
+            // Dropdown도 입력 폼 처럼 보이게
             DropdownButtonFormField<String>(
               value: selectedLine,
               decoration: const InputDecoration(
                 border: OutlineInputBorder(),
                 isDense: true,
               ),
-              items: lines
-                  .map(
-                    (line) => DropdownMenuItem(
-                  value: line,
-                  child: Row(
-                    children: [
-                      Icon(Icons.train, color: iconColorForLine(line)),
-                      const SizedBox(width: 8),
-                      Text(line),
-                    ],
-                  ),
-                ),
-              )
-                  .toList(),
+              items:
+                  lines
+                      .map(
+                        (line) => DropdownMenuItem(
+                          value: line,
+                          child: Row(
+                            children: [
+                              Icon(Icons.train, color: iconColorForLine(line)),
+                              const SizedBox(width: 8),
+                              Text(line),
+                            ],
+                          ),
+                        ),
+                      )
+                      .toList(),
               onChanged: (value) {
                 if (value == null) return;
                 setState(() => selectedLine = value);
@@ -133,25 +149,30 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 12),
 
             TextField(
+              controller: _searchControlloer,
               decoration: InputDecoration(
                 hintText: '역을 검색하세요',
                 prefixIcon: const Icon(Icons.search),
-                suffixIcon: query.isEmpty
-                    ? null
-                    : IconButton(
-                  onPressed: () => setState(() => query = ''),
-                  icon: const Icon(Icons.clear),
-                  tooltip: 'Clear',
-                ),
+                suffixIcon:
+                    stationQuery.isEmpty
+                        ? null
+                        : IconButton(
+                          onPressed: () {
+                            _searchControlloer.clear();
+                            setState(() => stationQuery = '');
+                          },
+                          icon: const Icon(Icons.clear),
+                          tooltip: 'Clear',
+                        ),
                 border: const OutlineInputBorder(),
                 isDense: true,
               ),
-              onChanged: (value) => setState(() => query = value),
+              onChanged: (value) => setState(() => stationQuery = value),
             ),
 
             const SizedBox(height: 12),
 
-            if (query.trim().isEmpty)
+            if (stationQuery.trim().isEmpty)
               const SizedBox.shrink()
             else if (hits.isEmpty)
               const Padding(
@@ -159,7 +180,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Text('검색 결과가 없습니다'),
               )
             else
-            // ✅ Column+Expanded 대신 ListView 하나로 구성 → overflow/레이아웃 문제 줄어듦
               ListView.separated(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
@@ -168,7 +188,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 itemBuilder: (context, index) {
                   final hit = hits[index];
                   return ListTile(
-                    leading: Icon(Icons.train, color: iconColorForLine(hit.line)),
+                    leading: Icon(
+                      Icons.train,
+                      color: iconColorForLine(hit.line),
+                    ),
                     title: Text(hit.station),
                     subtitle: selectedLine == allLines ? Text(hit.line) : null,
                     onTap: () {
@@ -181,5 +204,11 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _searchControlloer.dispose();
+    super.dispose();
   }
 }
