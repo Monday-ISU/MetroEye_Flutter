@@ -5,6 +5,11 @@ import 'package:metroeye_flutter/core/device/device_identity_service.dart';
 import 'package:metroeye_flutter/core/device/device_session.dart';
 import 'package:metroeye_flutter/core/device/device_session_service.dart';
 import 'package:metroeye_flutter/core/device/device_token_storage.dart';
+import 'package:metroeye_flutter/core/line/line_api_service.dart';
+import 'package:metroeye_flutter/core/line/line_cache_storage.dart';
+import 'package:metroeye_flutter/core/line/line_model.dart';
+import 'package:metroeye_flutter/core/line/line_service.dart';
+import 'package:metroeye_flutter/core/network/api_exception.dart';
 
 void main() {
   group('DeviceIdentityService', () {
@@ -106,6 +111,62 @@ void main() {
       expect(tokenStorage.writeCalls, 0);
     });
   });
+
+  group('LineService', () {
+    test('fetches from api and caches the latest line data', () async {
+      final apiService = _FakeLineApiService(
+        const [
+          LineModel(
+            id: 1,
+            name: '1호선',
+            code: 'LINE_1',
+            color: '#0033A0',
+          ),
+        ],
+      );
+      final cacheStorage = _FakeLineCacheStorage();
+      final service = LineService(
+        apiService: apiService,
+        cacheStorage: cacheStorage,
+      );
+
+      final lines = await service.loadForHome(accessToken: 'access-token');
+
+      expect(apiService.fetchCalls, 1);
+      expect(apiService.lastAccessToken, 'access-token');
+      expect(cacheStorage.writeCalls, 1);
+      expect(lines, hasLength(1));
+      expect(lines.first.name, '1호선');
+    });
+
+    test('uses cached lines when api request fails', () async {
+      final apiService = _FakeLineApiService(
+        const [],
+        error: const ApiException('Line API request failed.'),
+      );
+      final cacheStorage = _FakeLineCacheStorage(
+        cachedLines: const [
+          LineModel(
+            id: 2,
+            name: '2호선',
+            code: 'LINE_2',
+            color: '#00B140',
+          ),
+        ],
+      );
+      final service = LineService(
+        apiService: apiService,
+        cacheStorage: cacheStorage,
+      );
+
+      final lines = await service.loadForHome(accessToken: 'access-token');
+
+      expect(apiService.fetchCalls, 1);
+      expect(cacheStorage.readCalls, 1);
+      expect(lines, hasLength(1));
+      expect(lines.first.name, '2호선');
+    });
+  });
 }
 
 class _FakeDeviceIdentityStore implements DeviceIdentityStore {
@@ -169,6 +230,51 @@ class _FakeDeviceTokenStorage implements DeviceTokenStorage {
   @override
   Future<void> write(DeviceSession session) async {
     this.session = session;
+    writeCalls += 1;
+  }
+}
+
+class _FakeLineApiService extends LineApiService {
+  _FakeLineApiService(this.lines, {this.error});
+
+  final List<LineModel> lines;
+  final ApiException? error;
+  int fetchCalls = 0;
+  String? lastAccessToken;
+
+  @override
+  Future<List<LineModel>> fetchLines({required String accessToken}) async {
+    fetchCalls += 1;
+    lastAccessToken = accessToken;
+
+    if (error != null) {
+      throw error!;
+    }
+
+    return lines;
+  }
+}
+
+class _FakeLineCacheStorage implements LineCacheStorage {
+  _FakeLineCacheStorage({this.cachedLines = const []});
+
+  final List<LineModel> cachedLines;
+  int writeCalls = 0;
+  int readCalls = 0;
+  String? rawJson;
+
+  @override
+  Future<String?> readRawJson() async => rawJson;
+
+  @override
+  Future<List<LineModel>> readLines() async {
+    readCalls += 1;
+    return cachedLines;
+  }
+
+  @override
+  Future<void> writeRawJson(String json) async {
+    rawJson = json;
     writeCalls += 1;
   }
 }

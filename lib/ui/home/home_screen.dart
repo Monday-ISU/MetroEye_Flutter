@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:metroeye_flutter/core/device/device_session.dart';
 import 'package:metroeye_flutter/core/device/device_session_service.dart';
+import 'package:metroeye_flutter/core/line/line_model.dart';
+import 'package:metroeye_flutter/core/line/line_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -19,72 +21,70 @@ class StationHit {
   final String station;
 }
 
-class _HomeScreenState extends State<HomeScreen> {
-  static const String allLines = '전체노선';
+class HomeScreenData {
+  const HomeScreenData({
+    required this.session,
+    required this.lines,
+  });
 
-  static const List<String> lines = [
-    allLines,
-    '1호선',
-    '2호선',
-    '3호선',
-    '4호선',
-    '5호선',
-    '6호선',
-    '7호선',
-    '8호선',
-    '9호선',
-  ];
+  final DeviceSession session;
+  final List<LineModel> lines;
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  static const String allLines = '전체 노선';
 
   static const Map<String, List<String>> stationsByLine = {
     '1호선': ['서울역', '시청', '종각', '종로3가'],
-    '2호선': ['시청', '강남', '잠실', '홍대입구'],
+    '2호선': ['시청', '강남', '홍대입구', '신도림'],
     '3호선': ['대화', '경복궁', '종로3가'],
-    '4호선': ['혜화', '서울역', '사당'],
+    '4호선': ['명동', '서울역', '사당'],
     '5호선': ['여의도', '광화문', '왕십리'],
-    '6호선': ['합정', '이태원'],
+    '6호선': ['이태원', '합정'],
     '7호선': ['건대입구', '고속터미널'],
     '8호선': ['잠실', '모란'],
     '9호선': ['여의도', '고속터미널'],
   };
 
-  static const Map<String, Color> lineColors = {
-    '1호선': Color(0xFF0033A0),
-    '2호선': Color(0xFF00B140),
-    '3호선': Color(0xFFFC4C02),
-    '4호선': Color(0xFF30E6FF),
-    '5호선': Color(0xFFA05EB5),
-    '6호선': Color(0xFFC75D28),
-    '7호선': Color(0xFF6D712E),
-    '8호선': Color(0xFFE31C79),
-    '9호선': Color(0xFFACAA88),
-  };
+  final TextEditingController _searchController = TextEditingController();
+  final DeviceSessionService _deviceSessionService = DeviceSessionService();
+  final LineService _lineService = LineService();
 
-  final TextEditingController _searchControlloer = TextEditingController();
-  late Future<DeviceSession> _deviceSessionFuture;
-
+  late Future<HomeScreenData> _homeFuture;
   String selectedLine = allLines;
   String stationQuery = '';
 
   @override
   void initState() {
     super.initState();
-    _deviceSessionFuture = DeviceSessionService().loadOrCreateSession();
+    _homeFuture = _loadHomeData();
   }
 
   @override
   void dispose() {
-    _searchControlloer.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
-  Color iconColorForLine(String line) {
-    if (line == allLines) {
-      return const Color(0xFF49729B);
-    }
-    return lineColors[line] ?? const Color(0xFF49729B);
+  Future<HomeScreenData> _loadHomeData() async {
+    final session = await _deviceSessionService.loadOrCreateSession();
+    final lines = await _lineService.loadForHome(
+      accessToken: session.accessToken,
+    );
+
+    return HomeScreenData(
+      session: session,
+      lines: lines,
+    );
   }
 
-  List<StationHit> filteredHits() {
+  void _retry() {
+    setState(() {
+      _homeFuture = _loadHomeData();
+    });
+  }
+
+  List<StationHit> _filteredHits(List<LineModel> lines) {
     final q = stationQuery.trim();
     if (q.isEmpty) {
       return const [];
@@ -93,13 +93,14 @@ class _HomeScreenState extends State<HomeScreen> {
     final hits = <StationHit>[];
 
     if (selectedLine == allLines) {
-      stationsByLine.forEach((line, stations) {
+      for (final line in lines) {
+        final stations = stationsByLine[line.name] ?? const [];
         for (final station in stations) {
           if (station.contains(q)) {
-            hits.add(StationHit(line: line, station: station));
+            hits.add(StationHit(line: line.name, station: station));
           }
         }
-      });
+      }
     } else {
       final stations = stationsByLine[selectedLine] ?? const [];
       for (final station in stations) {
@@ -117,10 +118,24 @@ class _HomeScreenState extends State<HomeScreen> {
     return hits;
   }
 
+  Color _iconColorForLine(String lineName, List<LineModel> lines) {
+    if (lineName == allLines) {
+      return const Color(0xFF49729B);
+    }
+
+    for (final line in lines) {
+      if (line.name == lineName) {
+        return line.colorValue;
+      }
+    }
+
+    return const Color(0xFF49729B);
+  }
+
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<DeviceSession>(
-      future: _deviceSessionFuture,
+    return FutureBuilder<HomeScreenData>(
+      future: _homeFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
           return const Scaffold(
@@ -142,24 +157,19 @@ class _HomeScreenState extends State<HomeScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        'Device session initialization failed.',
+                        'Home bootstrap failed.',
                         style: Theme.of(context).textTheme.bodyLarge,
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 12),
                       Text(
-                        snapshot.error?.toString() ?? 'Unknown error',
+                        '자세한 실패 원인은 콘솔 로그를 확인하세요.',
                         style: Theme.of(context).textTheme.bodyMedium,
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 16),
                       FilledButton(
-                        onPressed: () {
-                          setState(() {
-                            _deviceSessionFuture =
-                                DeviceSessionService().loadOrCreateSession();
-                          });
-                        },
+                        onPressed: _retry,
                         child: const Text('Retry'),
                       ),
                     ],
@@ -170,7 +180,18 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         }
 
-        final hits = filteredHits();
+        final data = snapshot.data!;
+        final apiLines = data.lines;
+        final dropdownLines = [
+          allLines,
+          ...apiLines.map((line) => line.name),
+        ];
+
+        if (!dropdownLines.contains(selectedLine)) {
+          selectedLine = allLines;
+        }
+
+        final hits = _filteredHits(apiLines);
 
         return Scaffold(
           body: SafeArea(
@@ -200,49 +221,58 @@ class _HomeScreenState extends State<HomeScreen> {
                     border: OutlineInputBorder(),
                     isDense: true,
                   ),
-                  items:
-                      lines
-                          .map(
-                            (line) => DropdownMenuItem(
-                              value: line,
-                              child: Row(
-                                children: [
-                                  Icon(Icons.train, color: iconColorForLine(line)),
-                                  const SizedBox(width: 8),
-                                  Text(line),
-                                ],
+                  items: dropdownLines
+                      .map(
+                        (line) => DropdownMenuItem(
+                          value: line,
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.train,
+                                color: _iconColorForLine(line, apiLines),
                               ),
-                            ),
-                          )
-                          .toList(),
+                              const SizedBox(width: 8),
+                              Text(line),
+                            ],
+                          ),
+                        ),
+                      )
+                      .toList(),
                   onChanged: (value) {
                     if (value == null) {
                       return;
                     }
-                    setState(() => selectedLine = value);
+                    setState(() {
+                      selectedLine = value;
+                    });
                   },
                 ),
                 const SizedBox(height: 12),
                 TextField(
-                  controller: _searchControlloer,
+                  controller: _searchController,
                   decoration: InputDecoration(
                     hintText: '역을 검색하세요',
                     prefixIcon: const Icon(Icons.search),
-                    suffixIcon:
-                        stationQuery.isEmpty
-                            ? null
-                            : IconButton(
-                              onPressed: () {
-                                _searchControlloer.clear();
-                                setState(() => stationQuery = '');
-                              },
-                              icon: const Icon(Icons.clear),
-                              tooltip: 'Clear',
-                            ),
+                    suffixIcon: stationQuery.isEmpty
+                        ? null
+                        : IconButton(
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() {
+                                stationQuery = '';
+                              });
+                            },
+                            icon: const Icon(Icons.clear),
+                            tooltip: 'Clear',
+                          ),
                     border: const OutlineInputBorder(),
                     isDense: true,
                   ),
-                  onChanged: (value) => setState(() => stationQuery = value),
+                  onChanged: (value) {
+                    setState(() {
+                      stationQuery = value;
+                    });
+                  },
                 ),
                 const SizedBox(height: 12),
                 if (stationQuery.trim().isEmpty)
@@ -263,7 +293,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       return ListTile(
                         leading: Icon(
                           Icons.train,
-                          color: iconColorForLine(hit.line),
+                          color: _iconColorForLine(hit.line, apiLines),
                         ),
                         title: Text(hit.station),
                         subtitle: selectedLine == allLines ? Text(hit.line) : null,
