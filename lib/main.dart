@@ -3,6 +3,7 @@ import 'package:metroeye_flutter/core/theme/app_theme.dart';
 import 'ui/home/home_screen.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const MetroEyeApp());
 }
 

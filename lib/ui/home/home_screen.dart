@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:metroeye_flutter/core/device/device_session.dart';
+import 'package:metroeye_flutter/core/device/device_session_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -8,15 +10,17 @@ class HomeScreen extends StatefulWidget {
 }
 
 class StationHit {
+  const StationHit({
+    required this.line,
+    required this.station,
+  });
+
   final String line;
   final String station;
-
-  const StationHit({required this.line, required this.station});
 }
 
 class _HomeScreenState extends State<HomeScreen> {
   static const String allLines = '전체노선';
-  final TextEditingController _searchControlloer = TextEditingController();
 
   static const List<String> lines = [
     allLines,
@@ -55,30 +59,53 @@ class _HomeScreenState extends State<HomeScreen> {
     '9호선': Color(0xFFACAA88),
   };
 
+  final TextEditingController _searchControlloer = TextEditingController();
+  late Future<DeviceSession> _deviceSessionFuture;
+
   String selectedLine = allLines;
   String stationQuery = '';
 
+  @override
+  void initState() {
+    super.initState();
+    _deviceSessionFuture = DeviceSessionService().loadOrCreateSession();
+  }
+
+  @override
+  void dispose() {
+    _searchControlloer.dispose();
+    super.dispose();
+  }
+
   Color iconColorForLine(String line) {
-    if (line == allLines) return const Color(0xFF49729B);
+    if (line == allLines) {
+      return const Color(0xFF49729B);
+    }
     return lineColors[line] ?? const Color(0xFF49729B);
   }
 
   List<StationHit> filteredHits() {
     final q = stationQuery.trim();
-    if (q.isEmpty) return const [];
+    if (q.isEmpty) {
+      return const [];
+    }
 
     final hits = <StationHit>[];
 
     if (selectedLine == allLines) {
       stationsByLine.forEach((line, stations) {
-        for (final s in stations) {
-          if (s.contains(q)) hits.add(StationHit(line: line, station: s));
+        for (final station in stations) {
+          if (station.contains(q)) {
+            hits.add(StationHit(line: line, station: station));
+          }
         }
       });
     } else {
       final stations = stationsByLine[selectedLine] ?? const [];
-      for (final s in stations) {
-        if (s.contains(q)) hits.add(StationHit(line: selectedLine, station: s));
+      for (final station in stations) {
+        if (station.contains(q)) {
+          hits.add(StationHit(line: selectedLine, station: station));
+        }
       }
     }
 
@@ -92,123 +119,165 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final hits = filteredHits();
+    return FutureBuilder<DeviceSession>(
+      future: _deviceSessionFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Scaffold(
+            body: SafeArea(
+              child: Center(
+                child: CircularProgressIndicator(),
+              ),
+            ),
+          );
+        }
 
-    return Scaffold(
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
+        if (snapshot.hasError || snapshot.data == null) {
+          return Scaffold(
+            body: SafeArea(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Device session initialization failed.',
+                        style: Theme.of(context).textTheme.bodyLarge,
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        snapshot.error?.toString() ?? 'Unknown error',
+                        style: Theme.of(context).textTheme.bodyMedium,
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 16),
+                      FilledButton(
+                        onPressed: () {
+                          setState(() {
+                            _deviceSessionFuture =
+                                DeviceSessionService().loadOrCreateSession();
+                          });
+                        },
+                        child: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
+
+        final hits = filteredHits();
+
+        return Scaffold(
+          body: SafeArea(
+            child: ListView(
+              padding: const EdgeInsets.all(16),
               children: [
-                Image.asset(
-                  'assets/icons/small_logo.png',
-                  width: 20,
-                  height: 20,
-                  fit: BoxFit.contain,
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Image.asset(
+                      'assets/icons/small_logo.png',
+                      width: 20,
+                      height: 20,
+                      fit: BoxFit.contain,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'MetroEye',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  'MetroEye',
-                  style: Theme.of(context).textTheme.titleMedium,
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: selectedLine,
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                  items:
+                      lines
+                          .map(
+                            (line) => DropdownMenuItem(
+                              value: line,
+                              child: Row(
+                                children: [
+                                  Icon(Icons.train, color: iconColorForLine(line)),
+                                  const SizedBox(width: 8),
+                                  Text(line),
+                                ],
+                              ),
+                            ),
+                          )
+                          .toList(),
+                  onChanged: (value) {
+                    if (value == null) {
+                      return;
+                    }
+                    setState(() => selectedLine = value);
+                  },
                 ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _searchControlloer,
+                  decoration: InputDecoration(
+                    hintText: '역을 검색하세요',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon:
+                        stationQuery.isEmpty
+                            ? null
+                            : IconButton(
+                              onPressed: () {
+                                _searchControlloer.clear();
+                                setState(() => stationQuery = '');
+                              },
+                              icon: const Icon(Icons.clear),
+                              tooltip: 'Clear',
+                            ),
+                    border: const OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                  onChanged: (value) => setState(() => stationQuery = value),
+                ),
+                const SizedBox(height: 12),
+                if (stationQuery.trim().isEmpty)
+                  const SizedBox.shrink()
+                else if (hits.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 8),
+                    child: Text('검색 결과가 없습니다'),
+                  )
+                else
+                  ListView.separated(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: hits.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final hit = hits[index];
+                      return ListTile(
+                        leading: Icon(
+                          Icons.train,
+                          color: iconColorForLine(hit.line),
+                        ),
+                        title: Text(hit.station),
+                        subtitle: selectedLine == allLines ? Text(hit.line) : null,
+                        onTap: () {
+                          // TODO: 다음작업 화면이동
+                        },
+                      );
+                    },
+                  ),
               ],
             ),
-
-            const SizedBox(height: 12),
-
-            // Dropdown도 입력 폼 처럼 보이게
-            DropdownButtonFormField<String>(
-              value: selectedLine,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                isDense: true,
-              ),
-              items:
-                  lines
-                      .map(
-                        (line) => DropdownMenuItem(
-                          value: line,
-                          child: Row(
-                            children: [
-                              Icon(Icons.train, color: iconColorForLine(line)),
-                              const SizedBox(width: 8),
-                              Text(line),
-                            ],
-                          ),
-                        ),
-                      )
-                      .toList(),
-              onChanged: (value) {
-                if (value == null) return;
-                setState(() => selectedLine = value);
-              },
-            ),
-
-            const SizedBox(height: 12),
-
-            TextField(
-              controller: _searchControlloer,
-              decoration: InputDecoration(
-                hintText: '역을 검색하세요',
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon:
-                    stationQuery.isEmpty
-                        ? null
-                        : IconButton(
-                          onPressed: () {
-                            _searchControlloer.clear();
-                            setState(() => stationQuery = '');
-                          },
-                          icon: const Icon(Icons.clear),
-                          tooltip: 'Clear',
-                        ),
-                border: const OutlineInputBorder(),
-                isDense: true,
-              ),
-              onChanged: (value) => setState(() => stationQuery = value),
-            ),
-
-            const SizedBox(height: 12),
-
-            if (stationQuery.trim().isEmpty)
-              const SizedBox.shrink()
-            else if (hits.isEmpty)
-              const Padding(
-                padding: EdgeInsets.only(top: 8),
-                child: Text('검색 결과가 없습니다'),
-              )
-            else
-              ListView.separated(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: hits.length,
-                separatorBuilder: (_, __) => const Divider(height: 1),
-                itemBuilder: (context, index) {
-                  final hit = hits[index];
-                  return ListTile(
-                    leading: Icon(
-                      Icons.train,
-                      color: iconColorForLine(hit.line),
-                    ),
-                    title: Text(hit.station),
-                    subtitle: selectedLine == allLines ? Text(hit.line) : null,
-                    onTap: () {
-                      // TODO: 다음 브랜치에서 ArrivalsScreen 네비게이션 연결
-                    },
-                  );
-                },
-              ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
-  }
-
-  @override
-  void dispose() {
-    _searchControlloer.dispose();
-    super.dispose();
   }
 }
