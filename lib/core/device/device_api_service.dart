@@ -1,6 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:metroeye_flutter/core/device/device_identity.dart';
-import 'package:metroeye_flutter/core/network/api_error_logger.dart';
+import 'package:metroeye_flutter/core/network/api_client.dart';
 import 'package:metroeye_flutter/core/network/api_exception.dart';
 import 'package:metroeye_flutter/core/network/api_response.dart';
 
@@ -39,15 +39,7 @@ class CreateDeviceResponse {
 
 class DeviceApiService {
   DeviceApiService([Dio? dio])
-    : _dio =
-          dio ??
-          Dio(
-            BaseOptions(
-              baseUrl: 'https://dev-api.metroeye.click',
-              contentType: Headers.jsonContentType,
-              responseType: ResponseType.json,
-            ),
-          );
+    : _dio = dio ?? ApiClient.createPublicDio(apiName: 'Device API');
 
   final Dio _dio;
 
@@ -77,31 +69,9 @@ class DeviceApiService {
         serverMessage: apiResponse.serverMessage,
       );
     } on DioException catch (error) {
-      final data = error.response?.data;
-      if (data is Map<String, dynamic>) {
-        final clientMessage = data['clientMessage'] as String?;
-        final serverMessage = data['serverMessage'] as String?;
-        logApiError(
-          apiName: 'Device API',
-          error: error,
-          clientMessage: clientMessage,
-          serverMessage: serverMessage,
-        );
-        throw ApiException(
-          clientMessage ?? serverMessage ?? 'Device API request failed.',
-          details: 'statusCode=${error.response?.statusCode ?? 'unknown'}\n'
-              'clientMessage=${clientMessage ?? '-'}\n'
-              'serverMessage=${serverMessage ?? '-'}',
-        );
-      }
-
-      logApiError(
-        apiName: 'Device API',
-        error: error,
-      );
-      throw ApiException(
-        error.message ?? 'Device API request failed.',
-        details: 'statusCode=${error.response?.statusCode ?? 'unknown'}',
+      throw ApiException.fromDioException(
+        error,
+        fallbackMessage: 'Device API request failed.',
       );
     }
   }

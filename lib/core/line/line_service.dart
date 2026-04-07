@@ -25,10 +25,8 @@ class LineService {
   final LineApiService _apiService;
   final LineCacheStorage _cacheStorage;
 
-  Future<List<LineModel>> fetchAndCacheLines({
-    required String accessToken,
-  }) async {
-    final lines = await _apiService.fetchLines(accessToken: accessToken);
+  Future<List<LineModel>> fetchAndCacheLines() async {
+    final lines = await _apiService.fetchLines();
     final rawJson = jsonEncode(lines.map((line) => line.toJson()).toList());
     await _cacheStorage.writeRawJson(rawJson);
     return lines;
@@ -38,18 +36,14 @@ class LineService {
     return _cacheStorage.readLines();
   }
 
-  Future<List<LineModel>> loadForHome({
-    required String accessToken,
-  }) async {
-    final result = await loadForHomeWithDebug(accessToken: accessToken);
+  Future<List<LineModel>> loadForHome() async {
+    final result = await loadForHomeWithDebug();
     return result.lines;
   }
 
-  Future<LineLoadResult> loadForHomeWithDebug({
-    required String accessToken,
-  }) async {
+  Future<LineLoadResult> loadForHomeWithDebug() async {
     try {
-      final lines = await fetchAndCacheLines(accessToken: accessToken);
+      final lines = await fetchAndCacheLines();
       return LineLoadResult(
         lines: lines,
         debugText: [

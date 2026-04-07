@@ -68,9 +68,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<HomeScreenData> _loadHomeData() async {
     final session = await _deviceSessionService.loadOrCreateSession();
-    final lines = await _lineService.loadForHome(
-      accessToken: session.accessToken,
-    );
+    final lines = await _lineService.loadForHome();
 
     return HomeScreenData(
       session: session,

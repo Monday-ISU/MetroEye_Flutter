@@ -1,33 +1,41 @@
 import 'package:dio/dio.dart';
+import 'package:metroeye_flutter/core/auth/auth_recovery_service.dart';
+import 'package:metroeye_flutter/core/device/device_token_storage.dart';
 import 'package:metroeye_flutter/core/line/line_model.dart';
-import 'package:metroeye_flutter/core/network/api_error_logger.dart';
+import 'package:metroeye_flutter/core/network/api_client.dart';
 import 'package:metroeye_flutter/core/network/api_exception.dart';
 import 'package:metroeye_flutter/core/network/api_response.dart';
 
 class LineApiService {
-  LineApiService([Dio? dio])
-    : _dio =
-          dio ??
-          Dio(
-            BaseOptions(
-              baseUrl: 'https://dev-api.metroeye.click',
-              contentType: Headers.jsonContentType,
-              responseType: ResponseType.json,
-            ),
-          );
+  LineApiService({
+    Dio? dio,
+    DeviceTokenStorage? tokenStorage,
+    AuthRecoveryService? authRecoveryService,
+  }) : this._(
+         dio: dio,
+         tokenStorage: tokenStorage ?? SecureDeviceTokenStorage(),
+         authRecoveryService: authRecoveryService,
+       );
+
+  LineApiService._({
+    Dio? dio,
+    required DeviceTokenStorage tokenStorage,
+    AuthRecoveryService? authRecoveryService,
+  }) : _dio =
+           dio ??
+           ApiClient.createProtectedDio(
+             apiName: 'Line API',
+             tokenStorage: tokenStorage,
+             authRecoveryService:
+                 authRecoveryService ??
+                 AuthRecoveryService(tokenStorage: tokenStorage),
+           );
 
   final Dio _dio;
 
-  Future<List<LineModel>> fetchLines({required String accessToken}) async {
+  Future<List<LineModel>> fetchLines() async {
     try {
-      final response = await _dio.get<Map<String, dynamic>>(
-        '/v1/lines',
-        options: Options(
-          headers: {
-            'Authorization': 'Bearer $accessToken',
-          },
-        ),
-      );
+      final response = await _dio.get<Map<String, dynamic>>('/v1/lines');
 
       final body = response.data;
       if (body == null) {
@@ -41,31 +49,9 @@ class LineApiService {
             .toList(),
       ).data;
     } on DioException catch (error) {
-      final data = error.response?.data;
-      if (data is Map<String, dynamic>) {
-        final clientMessage = data['clientMessage'] as String?;
-        final serverMessage = data['serverMessage'] as String?;
-        logApiError(
-          apiName: 'Line API',
-          error: error,
-          clientMessage: clientMessage,
-          serverMessage: serverMessage,
-        );
-        throw ApiException(
-          clientMessage ?? serverMessage ?? 'Line API request failed.',
-          details: 'statusCode=${error.response?.statusCode ?? 'unknown'}\n'
-              'clientMessage=${clientMessage ?? '-'}\n'
-              'serverMessage=${serverMessage ?? '-'}',
-        );
-      }
-
-      logApiError(
-        apiName: 'Line API',
-        error: error,
-      );
-      throw ApiException(
-        error.message ?? 'Line API request failed.',
-        details: 'statusCode=${error.response?.statusCode ?? 'unknown'}',
+      throw ApiException.fromDioException(
+        error,
+        fallbackMessage: 'Line API request failed.',
       );
     }
   }
