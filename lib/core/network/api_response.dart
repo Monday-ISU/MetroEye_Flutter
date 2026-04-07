@@ -28,5 +28,13 @@ Map<String, dynamic> asMap(Object? value) {
     return value;
   }
 
-  throw const ApiException('응답 데이터 형식이 올바르지 않습니다.');
+  throw const ApiException('Response data is not a map.');
+}
+
+List<Object?> asList(Object? value) {
+  if (value is List<Object?>) {
+    return value;
+  }
+
+  throw const ApiException('Response data is not a list.');
 }

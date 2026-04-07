@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:metroeye_flutter/core/device/device_identity.dart';
+import 'package:metroeye_flutter/core/network/api_client.dart';
 import 'package:metroeye_flutter/core/network/api_exception.dart';
 import 'package:metroeye_flutter/core/network/api_response.dart';
 
@@ -9,14 +10,22 @@ class CreateDeviceResponse {
     required this.accessToken,
     required this.refreshToken,
     required this.expiresIn,
+    this.clientMessage = '',
+    this.serverMessage = '',
   });
 
-  factory CreateDeviceResponse.fromJson(Map<String, dynamic> json) {
+  factory CreateDeviceResponse.fromJson(
+    Map<String, dynamic> json, {
+    String clientMessage = '',
+    String serverMessage = '',
+  }) {
     return CreateDeviceResponse(
       secret: json['secret'] as String,
       accessToken: json['accessToken'] as String,
       refreshToken: json['refreshToken'] as String,
       expiresIn: (json['expiresIn'] as num).toInt(),
+      clientMessage: clientMessage,
+      serverMessage: serverMessage,
     );
   }
 
@@ -24,19 +33,13 @@ class CreateDeviceResponse {
   final String accessToken;
   final String refreshToken;
   final int expiresIn;
+  final String clientMessage;
+  final String serverMessage;
 }
 
 class DeviceApiService {
   DeviceApiService([Dio? dio])
-    : _dio =
-          dio ??
-          Dio(
-            BaseOptions(
-              baseUrl: 'https://dev-api.metroeye.click',
-              contentType: Headers.jsonContentType,
-              responseType: ResponseType.json,
-            ),
-          );
+    : _dio = dio ?? ApiClient.createPublicDio(apiName: 'Device API');
 
   final Dio _dio;
 
@@ -52,22 +55,24 @@ class DeviceApiService {
 
       final body = response.data;
       if (body == null) {
-        throw const ApiException('서버 응답이 비어 있습니다.');
+        throw const ApiException('Device API response is empty.');
       }
 
-      return ApiResponse<CreateDeviceResponse>.fromJson(
+      final apiResponse = ApiResponse<Map<String, dynamic>>.fromJson(
         body,
-        (data) => CreateDeviceResponse.fromJson(asMap(data)),
-      ).data;
-    } on DioException catch (error) {
-      final data = error.response?.data;
-      if (data is Map<String, dynamic>) {
-        final clientMessage = data['clientMessage'] as String?;
-        final serverMessage = data['serverMessage'] as String?;
-        throw ApiException(clientMessage ?? serverMessage ?? 'Device API 호출에 실패했습니다.');
-      }
+        (data) => asMap(data),
+      );
 
-      throw ApiException(error.message ?? 'Device API 호출에 실패했습니다.');
+      return CreateDeviceResponse.fromJson(
+        apiResponse.data,
+        clientMessage: apiResponse.clientMessage,
+        serverMessage: apiResponse.serverMessage,
+      );
+    } on DioException catch (error) {
+      throw ApiException.fromDioException(
+        error,
+        fallbackMessage: 'Device API request failed.',
+      );
     }
   }
 }

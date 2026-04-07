@@ -15,6 +15,24 @@ class DeviceSession {
   final String refreshToken;
   final int expiresIn;
 
+  DeviceSession copyWith({
+    String? osType,
+    String? uuid,
+    String? secret,
+    String? accessToken,
+    String? refreshToken,
+    int? expiresIn,
+  }) {
+    return DeviceSession(
+      osType: osType ?? this.osType,
+      uuid: uuid ?? this.uuid,
+      secret: secret ?? this.secret,
+      accessToken: accessToken ?? this.accessToken,
+      refreshToken: refreshToken ?? this.refreshToken,
+      expiresIn: expiresIn ?? this.expiresIn,
+    );
+  }
+
   Map<String, dynamic> toJson() {
     return {
       'osType': osType,
