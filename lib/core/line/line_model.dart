@@ -2,33 +2,25 @@ import 'package:flutter/material.dart';
 
 class LineModel {
   const LineModel({
-    required this.id,
-    required this.name,
-    required this.code,
+    required this.lineId,
+    required this.lineName,
     required this.color,
   });
 
   factory LineModel.fromJson(Map<String, dynamic> json) {
     return LineModel(
-      id: (json['id'] as num?)?.toInt(),
-      name: json['name'] as String,
-      code: json['code'] as String,
+      lineId: (json['lineId'] as num).toInt(),
+      lineName: json['lineName'] as String,
       color: json['color'] as String,
     );
   }
 
-  final int? id;
-  final String name;
-  final String code;
+  final int lineId;
+  final String lineName;
   final String color;
 
   Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'name': name,
-      'code': code,
-      'color': color,
-    };
+    return {'lineId': lineId, 'lineName': lineName, 'color': color};
   }
 
   Color get colorValue {
