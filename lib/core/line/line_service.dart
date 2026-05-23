@@ -43,39 +43,39 @@ class LineService {
 
   Future<LineLoadResult> loadForHomeWithDebug() async {
     try {
-      final lines = await fetchAndCacheLines();
+      final cachedLines = await loadCachedLines();
       return LineLoadResult(
-        lines: lines,
+        lines: cachedLines,
         debugText: [
-          'Line source: api',
-          'lineCount=${lines.length}',
-          'cacheUpdated=true',
+          'Line source: cache',
+          'cachedLineCount=${cachedLines.length}',
         ].join('\n'),
       );
-    } on ApiException catch (apiError) {
+    } on ApiException catch (cacheError) {
       try {
-        final cachedLines = await loadCachedLines();
+        final lines = await fetchAndCacheLines();
         return LineLoadResult(
-          lines: cachedLines,
+          lines: lines,
           debugText: [
-            'Line source: cache',
-            'lineApiError=${apiError.message}',
-            if (apiError.details != null && apiError.details!.isNotEmpty)
-              apiError.details!,
-            'cachedLineCount=${cachedLines.length}',
+            'Line source: api',
+            'cacheError=${cacheError.message}',
+            if (cacheError.details != null && cacheError.details!.isNotEmpty)
+              cacheError.details!,
+            'lineCount=${lines.length}',
+            'cacheUpdated=true',
           ].join('\n'),
         );
-      } on ApiException catch (cacheError) {
+      } on ApiException catch (apiError) {
         throw ApiException(
           'Line bootstrap failed.',
           details: [
             'Line source: failed',
-            'lineApiError=${apiError.message}',
-            if (apiError.details != null && apiError.details!.isNotEmpty)
-              apiError.details!,
             'cacheError=${cacheError.message}',
             if (cacheError.details != null && cacheError.details!.isNotEmpty)
               cacheError.details!,
+            'lineApiError=${apiError.message}',
+            if (apiError.details != null && apiError.details!.isNotEmpty)
+              apiError.details!,
           ].join('\n'),
         );
       }

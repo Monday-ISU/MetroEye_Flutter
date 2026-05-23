@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:metroeye_flutter/core/device/device_session.dart';
 import 'package:metroeye_flutter/core/device/device_session_service.dart';
 import 'package:metroeye_flutter/core/line/line_model.dart';
 import 'package:metroeye_flutter/core/line/line_service.dart';
+import 'package:metroeye_flutter/core/station/station_model.dart';
+import 'package:metroeye_flutter/core/station/station_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -15,40 +16,127 @@ class StationHit {
   const StationHit({
     required this.line,
     required this.station,
+    required this.stationCode,
+    required this.lineId,
+    required this.matchPriority,
   });
 
   final String line;
   final String station;
+  final String stationCode;
+  final int lineId;
+  final int matchPriority;
 }
 
 class HomeScreenData {
-  const HomeScreenData({
-    required this.session,
-    required this.lines,
+  const HomeScreenData({required this.lines, required this.stations});
+
+  final List<LineModel> lines;
+  final List<StationModel> stations;
+}
+
+List<StationHit> filterStationHits({
+  required List<StationModel> stations,
+  required List<LineModel> lines,
+  required String selectedLine,
+  required String query,
+  required String allLines,
+}) {
+  final trimmedQuery = query.trim();
+  if (trimmedQuery.isEmpty) {
+    return const [];
+  }
+
+  final normalizedQuery = trimmedQuery.toLowerCase();
+  final hits = <StationHit>[];
+  final selectedLineId =
+      selectedLine == allLines ? null : _lineIdForName(selectedLine, lines);
+  if (selectedLine != allLines && selectedLineId == null) {
+    return const [];
+  }
+
+  for (final station in stations) {
+    if (selectedLineId != null && station.lineId != selectedLineId) {
+      continue;
+    }
+
+    final normalizedName = station.stationName.toLowerCase();
+    if (!normalizedName.contains(normalizedQuery)) {
+      continue;
+    }
+
+    final matchPriority =
+        normalizedName == normalizedQuery
+            ? 0
+            : normalizedName.startsWith(normalizedQuery)
+            ? 1
+            : 2;
+
+    hits.add(
+      StationHit(
+        line: _lineNameForId(station.lineId, lines),
+        station: station.stationName,
+        stationCode: station.stationCode,
+        lineId: station.lineId,
+        matchPriority: matchPriority,
+      ),
+    );
+  }
+
+  hits.sort((a, b) {
+    final byMatchPriority = a.matchPriority.compareTo(b.matchPriority);
+    if (byMatchPriority != 0) {
+      return byMatchPriority;
+    }
+
+    final byStationLength = a.station.length.compareTo(b.station.length);
+    if (byStationLength != 0) {
+      return byStationLength;
+    }
+
+    final byStation = a.station.compareTo(b.station);
+    if (byStation != 0) {
+      return byStation;
+    }
+
+    final byLineOrder = a.lineId.compareTo(b.lineId);
+    if (byLineOrder != 0) {
+      return byLineOrder;
+    }
+
+    return a.stationCode.compareTo(b.stationCode);
   });
 
-  final DeviceSession session;
-  final List<LineModel> lines;
+  return hits;
+}
+
+int? _lineIdForName(String lineName, List<LineModel> lines) {
+  for (final line in lines) {
+    if (line.lineName == lineName) {
+      return line.lineId;
+    }
+  }
+
+  return null;
+}
+
+String _lineNameForId(int lineId, List<LineModel> lines) {
+  for (final line in lines) {
+    if (line.lineId == lineId) {
+      return line.lineName;
+    }
+  }
+
+  return '';
 }
 
 class _HomeScreenState extends State<HomeScreen> {
   static const String allLines = '전체 노선';
 
-  static const Map<String, List<String>> stationsByLine = {
-    '1호선': ['서울역', '시청', '종각', '종로3가'],
-    '2호선': ['시청', '강남', '홍대입구', '신도림'],
-    '3호선': ['대화', '경복궁', '종로3가'],
-    '4호선': ['명동', '서울역', '사당'],
-    '5호선': ['여의도', '광화문', '왕십리'],
-    '6호선': ['이태원', '합정'],
-    '7호선': ['건대입구', '고속터미널'],
-    '8호선': ['잠실', '모란'],
-    '9호선': ['여의도', '고속터미널'],
-  };
-
   final TextEditingController _searchController = TextEditingController();
   final DeviceSessionService _deviceSessionService = DeviceSessionService();
   final LineService _lineService = LineService();
+  final StationService _stationService = StationService();
 
   late Future<HomeScreenData> _homeFuture;
   String selectedLine = allLines;
@@ -67,12 +155,15 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<HomeScreenData> _loadHomeData() async {
-    final session = await _deviceSessionService.loadOrCreateSession();
-    final lines = await _lineService.loadForHome();
+    await _deviceSessionService.loadOrCreateSession();
+    final results = await Future.wait([
+      _lineService.loadForHome(),
+      _stationService.loadForHome(),
+    ]);
 
     return HomeScreenData(
-      session: session,
-      lines: lines,
+      lines: results[0] as List<LineModel>,
+      stations: results[1] as List<StationModel>,
     );
   }
 
@@ -82,38 +173,17 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  List<StationHit> _filteredHits(List<LineModel> lines) {
-    final q = stationQuery.trim();
-    if (q.isEmpty) {
-      return const [];
-    }
-
-    final hits = <StationHit>[];
-
-    if (selectedLine == allLines) {
-      for (final line in lines) {
-        final stations = stationsByLine[line.name] ?? const [];
-        for (final station in stations) {
-          if (station.contains(q)) {
-            hits.add(StationHit(line: line.name, station: station));
-          }
-        }
-      }
-    } else {
-      final stations = stationsByLine[selectedLine] ?? const [];
-      for (final station in stations) {
-        if (station.contains(q)) {
-          hits.add(StationHit(line: selectedLine, station: station));
-        }
-      }
-    }
-
-    hits.sort((a, b) {
-      final byStation = a.station.compareTo(b.station);
-      return byStation != 0 ? byStation : a.line.compareTo(b.line);
-    });
-
-    return hits;
+  List<StationHit> _filteredHits({
+    required List<StationModel> stations,
+    required List<LineModel> lines,
+  }) {
+    return filterStationHits(
+      stations: stations,
+      lines: lines,
+      selectedLine: selectedLine,
+      query: stationQuery,
+      allLines: allLines,
+    );
   }
 
   Color _iconColorForLine(String lineName, List<LineModel> lines) {
@@ -122,7 +192,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     for (final line in lines) {
-      if (line.name == lineName) {
+      if (line.lineName == lineName) {
         return line.colorValue;
       }
     }
@@ -137,15 +207,13 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
           return const Scaffold(
-            body: SafeArea(
-              child: Center(
-                child: CircularProgressIndicator(),
-              ),
-            ),
+            body: SafeArea(child: Center(child: CircularProgressIndicator())),
           );
         }
 
         if (snapshot.hasError || snapshot.data == null) {
+          debugPrint('Home bootstrap error: ${snapshot.error}');
+          debugPrint('Home bootstrap stack: ${snapshot.stackTrace}');
           return Scaffold(
             body: SafeArea(
               child: Center(
@@ -161,7 +229,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       const SizedBox(height: 12),
                       Text(
-                        '자세한 실패 원인은 콘솔 로그를 확인하세요.',
+                        '실패 콘솔 로그 확인',
                         style: Theme.of(context).textTheme.bodyMedium,
                         textAlign: TextAlign.center,
                       ),
@@ -180,16 +248,17 @@ class _HomeScreenState extends State<HomeScreen> {
 
         final data = snapshot.data!;
         final apiLines = data.lines;
+        final stations = data.stations;
         final dropdownLines = [
           allLines,
-          ...apiLines.map((line) => line.name),
+          ...apiLines.map((line) => line.lineName),
         ];
 
         if (!dropdownLines.contains(selectedLine)) {
           selectedLine = allLines;
         }
 
-        final hits = _filteredHits(apiLines);
+        final hits = _filteredHits(stations: stations, lines: apiLines);
 
         return Scaffold(
           body: SafeArea(
@@ -219,23 +288,24 @@ class _HomeScreenState extends State<HomeScreen> {
                     border: OutlineInputBorder(),
                     isDense: true,
                   ),
-                  items: dropdownLines
-                      .map(
-                        (line) => DropdownMenuItem(
-                          value: line,
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.train,
-                                color: _iconColorForLine(line, apiLines),
+                  items:
+                      dropdownLines
+                          .map(
+                            (line) => DropdownMenuItem(
+                              value: line,
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.train,
+                                    color: _iconColorForLine(line, apiLines),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(line),
+                                ],
                               ),
-                              const SizedBox(width: 8),
-                              Text(line),
-                            ],
-                          ),
-                        ),
-                      )
-                      .toList(),
+                            ),
+                          )
+                          .toList(),
                   onChanged: (value) {
                     if (value == null) {
                       return;
@@ -251,18 +321,19 @@ class _HomeScreenState extends State<HomeScreen> {
                   decoration: InputDecoration(
                     hintText: '역을 검색하세요',
                     prefixIcon: const Icon(Icons.search),
-                    suffixIcon: stationQuery.isEmpty
-                        ? null
-                        : IconButton(
-                            onPressed: () {
-                              _searchController.clear();
-                              setState(() {
-                                stationQuery = '';
-                              });
-                            },
-                            icon: const Icon(Icons.clear),
-                            tooltip: 'Clear',
-                          ),
+                    suffixIcon:
+                        stationQuery.isEmpty
+                            ? null
+                            : IconButton(
+                              onPressed: () {
+                                _searchController.clear();
+                                setState(() {
+                                  stationQuery = '';
+                                });
+                              },
+                              icon: const Icon(Icons.clear),
+                              tooltip: 'Clear',
+                            ),
                     border: const OutlineInputBorder(),
                     isDense: true,
                   ),
@@ -294,9 +365,10 @@ class _HomeScreenState extends State<HomeScreen> {
                           color: _iconColorForLine(hit.line, apiLines),
                         ),
                         title: Text(hit.station),
-                        subtitle: selectedLine == allLines ? Text(hit.line) : null,
+                        subtitle:
+                            selectedLine == allLines ? Text(hit.line) : null,
                         onTap: () {
-                          // TODO: 다음작업 화면이동
+                          // TODO: Navigate to the next screen.
                         },
                       );
                     },

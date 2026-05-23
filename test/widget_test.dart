@@ -19,6 +19,11 @@ import 'package:metroeye_flutter/core/line/line_service.dart';
 import 'package:metroeye_flutter/core/network/api_exception.dart';
 import 'package:metroeye_flutter/core/network/api_logging_interceptor.dart';
 import 'package:metroeye_flutter/core/network/auth_recovery_interceptor.dart';
+import 'package:metroeye_flutter/core/station/station_api_service.dart';
+import 'package:metroeye_flutter/core/station/station_cache_storage.dart';
+import 'package:metroeye_flutter/core/station/station_model.dart';
+import 'package:metroeye_flutter/core/station/station_service.dart';
+import 'package:metroeye_flutter/ui/home/home_screen.dart';
 
 void main() {
   late DebugPrintCallback originalDebugPrint;
@@ -121,7 +126,9 @@ void main() {
           expiresIn: 180,
         ),
       );
-      final tokenStorage = _FakeDeviceTokenStorage(initialSession: storedSession);
+      final tokenStorage = _FakeDeviceTokenStorage(
+        initialSession: storedSession,
+      );
       final service = DeviceSessionService(
         identityService: identityService,
         deviceApiService: apiService,
@@ -148,13 +155,12 @@ void main() {
         refreshToken: 'old-refresh',
         expiresIn: 180,
       );
-      final tokenStorage = _FakeDeviceTokenStorage(initialSession: initialSession);
+      final tokenStorage = _FakeDeviceTokenStorage(
+        initialSession: initialSession,
+      );
       final authApiService = _FakeAuthApiService(
         refreshTokenResults: const [
-          RefreshTokenResponse(
-            accessToken: 'new-access',
-            expiresIn: 180,
-          ),
+          RefreshTokenResponse(accessToken: 'new-access', expiresIn: 180),
         ],
       );
       final service = AuthRecoveryService(
@@ -180,7 +186,9 @@ void main() {
         refreshToken: 'old-refresh',
         expiresIn: 180,
       );
-      final tokenStorage = _FakeDeviceTokenStorage(initialSession: initialSession);
+      final tokenStorage = _FakeDeviceTokenStorage(
+        initialSession: initialSession,
+      );
       final authApiService = _FakeAuthApiService(
         refreshTokenResults: const [
           ApiException(
@@ -212,84 +220,78 @@ void main() {
       expect(session.refreshToken, 'new-refresh');
     });
 
-    test('does not fall back when refresh token fails for a non-auth reason', () async {
-      const initialSession = DeviceSession(
-        osType: 'ANDROID',
-        uuid: 'device-uuid',
-        secret: 'secret',
-        accessToken: 'old-access',
-        refreshToken: 'old-refresh',
-        expiresIn: 180,
-      );
-      final tokenStorage = _FakeDeviceTokenStorage(initialSession: initialSession);
-      final authApiService = _FakeAuthApiService(
-        refreshTokenResults: const [
-          ApiException(
-            'Temporary server failure.',
-            statusCode: 500,
-          ),
-        ],
-      );
-      final service = AuthRecoveryService(
-        authApiService: authApiService,
-        tokenStorage: tokenStorage,
-      );
+    test(
+      'does not fall back when refresh token fails for a non-auth reason',
+      () async {
+        const initialSession = DeviceSession(
+          osType: 'ANDROID',
+          uuid: 'device-uuid',
+          secret: 'secret',
+          accessToken: 'old-access',
+          refreshToken: 'old-refresh',
+          expiresIn: 180,
+        );
+        final tokenStorage = _FakeDeviceTokenStorage(
+          initialSession: initialSession,
+        );
+        final authApiService = _FakeAuthApiService(
+          refreshTokenResults: const [
+            ApiException('Temporary server failure.', statusCode: 500),
+          ],
+        );
+        final service = AuthRecoveryService(
+          authApiService: authApiService,
+          tokenStorage: tokenStorage,
+        );
 
-      await expectLater(
-        service.recoverSession(),
-        throwsA(
-          isA<ApiException>().having(
-            (error) => error.message,
-            'message',
-            'Temporary server failure.',
+        await expectLater(
+          service.recoverSession(),
+          throwsA(
+            isA<ApiException>().having(
+              (error) => error.message,
+              'message',
+              'Temporary server failure.',
+            ),
           ),
-        ),
-      );
-      expect(authApiService.refreshTokenCalls, 1);
-      expect(authApiService.clientCredentialCalls, 0);
-      expect(tokenStorage.writeCalls, 0);
-    });
+        );
+        expect(authApiService.refreshTokenCalls, 1);
+        expect(authApiService.clientCredentialCalls, 0);
+        expect(tokenStorage.writeCalls, 0);
+      },
+    );
   });
 
   group('LineService', () {
-    test('fetches from api and caches the latest line data', () async {
-      final apiService = _FakeLineApiService(
-        const [
-          LineModel(
-            id: 1,
-            name: 'Line 1',
-            code: 'LINE_1',
-            color: '#0033A0',
-          ),
-        ],
-      );
-      final cacheStorage = _FakeLineCacheStorage();
-      final service = LineService(
-        apiService: apiService,
-        cacheStorage: cacheStorage,
-      );
+    test(
+      'fetches from api and caches the latest line data when cache is empty',
+      () async {
+        final apiService = _FakeLineApiService(const [
+          LineModel(lineId: 1, lineName: 'Line 1', color: '#0033A0'),
+        ]);
+        final cacheStorage = _FakeLineCacheStorage();
+        final service = LineService(
+          apiService: apiService,
+          cacheStorage: cacheStorage,
+        );
 
-      final lines = await service.loadForHome();
+        final lines = await service.loadForHome();
 
-      expect(apiService.fetchCalls, 1);
-      expect(cacheStorage.writeCalls, 1);
-      expect(lines, hasLength(1));
-      expect(lines.first.name, 'Line 1');
-    });
+        expect(apiService.fetchCalls, 1);
+        expect(cacheStorage.readCalls, 1);
+        expect(cacheStorage.writeCalls, 1);
+        expect(lines, hasLength(1));
+        expect(lines.first.lineName, 'Line 1');
+      },
+    );
 
-    test('uses cached lines when api request fails', () async {
+    test('uses cached lines without calling api when cache exists', () async {
       final apiService = _FakeLineApiService(
         const [],
         error: const ApiException('Line API request failed.'),
       );
       final cacheStorage = _FakeLineCacheStorage(
         cachedLines: const [
-          LineModel(
-            id: 2,
-            name: 'Line 2',
-            code: 'LINE_2',
-            color: '#00B140',
-          ),
+          LineModel(lineId: 2, lineName: 'Line 2', color: '#00B140'),
         ],
       );
       final service = LineService(
@@ -299,28 +301,183 @@ void main() {
 
       final lines = await service.loadForHome();
 
-      expect(apiService.fetchCalls, 1);
+      expect(apiService.fetchCalls, 0);
       expect(cacheStorage.readCalls, 1);
       expect(lines, hasLength(1));
-      expect(lines.first.name, 'Line 2');
+      expect(lines.first.lineName, 'Line 2');
+    });
+  });
+
+  group('StationService', () {
+    test(
+      'fetches from api and caches the latest station data when cache is empty',
+      () async {
+        final apiService = _FakeStationApiService(const [
+          StationModel(
+            stationName: 'City Hall',
+            stationCode: '1001',
+            lineId: 1,
+          ),
+        ]);
+        final cacheStorage = _FakeStationCacheStorage();
+        final service = StationService(
+          apiService: apiService,
+          cacheStorage: cacheStorage,
+        );
+
+        final stations = await service.loadForHome();
+
+        expect(apiService.fetchCalls, 1);
+        expect(cacheStorage.readCalls, 1);
+        expect(cacheStorage.writeCalls, 1);
+        expect(stations, hasLength(1));
+        expect(stations.first.stationName, 'City Hall');
+      },
+    );
+
+    test(
+      'uses cached stations without calling api when cache exists',
+      () async {
+        final apiService = _FakeStationApiService(const []);
+        final cacheStorage = _FakeStationCacheStorage(
+          cachedStations: const [
+            StationModel(stationName: 'Gangnam', stationCode: '222', lineId: 2),
+          ],
+        );
+        final service = StationService(
+          apiService: apiService,
+          cacheStorage: cacheStorage,
+        );
+
+        final stations = await service.loadForHome();
+
+        expect(apiService.fetchCalls, 0);
+        expect(cacheStorage.readCalls, 1);
+        expect(stations, hasLength(1));
+        expect(stations.first.stationName, 'Gangnam');
+      },
+    );
+  });
+
+  group('filterStationHits', () {
+    const lines = [
+      LineModel(lineId: 2, lineName: 'Line 2', color: '#00B140'),
+      LineModel(lineId: 3, lineName: 'Line 3', color: '#FC4C02'),
+      LineModel(lineId: 4, lineName: 'Line 4', color: '#00A9E0'),
+      LineModel(lineId: 6, lineName: 'Line 6', color: '#A9431E'),
+      LineModel(lineId: 9, lineName: 'Line 9', color: '#BDB092'),
+    ];
+    const stations = [
+      StationModel(stationName: 'sa', stationCode: '100', lineId: 2),
+      StationModel(stationName: 'sacheon', stationCode: '101', lineId: 2),
+      StationModel(stationName: 'sacheon', stationCode: '102', lineId: 4),
+      StationModel(stationName: 'sinsa', stationCode: '103', lineId: 3),
+      StationModel(stationName: 'sapyeong', stationCode: '104', lineId: 6),
+      StationModel(
+        stationName: 'yeoksamsageori',
+        stationCode: '105',
+        lineId: 9,
+      ),
+    ];
+
+    test('prioritizes exact match before prefix and contains hits', () {
+      final hits = filterStationHits(
+        stations: stations,
+        lines: lines,
+        selectedLine: 'All',
+        query: 'sa',
+        allLines: 'All',
+      );
+
+      expect(hits.map((hit) => hit.station).toList(), [
+        'sa',
+        'sacheon',
+        'sacheon',
+        'sapyeong',
+        'sinsa',
+        'yeoksamsageori',
+      ]);
+    });
+
+    test(
+      'orders same station name by lower lineId first after relevance ties',
+      () {
+        final hits = filterStationHits(
+          stations: stations,
+          lines: lines,
+          selectedLine: 'All',
+          query: 'sa',
+          allLines: 'All',
+        );
+
+        final sacheonHits =
+            hits.where((hit) => hit.station == 'sacheon').toList();
+        expect(sacheonHits[0].lineId, 2);
+        expect(sacheonHits[1].lineId, 4);
+      },
+    );
+
+    test(
+      'prefers shorter station names before line order within same relevance',
+      () {
+        final hits = filterStationHits(
+          stations: stations,
+          lines: lines,
+          selectedLine: 'All',
+          query: 'sa',
+          allLines: 'All',
+        );
+
+        final prefixHits =
+            hits
+                .where((hit) => hit.matchPriority == 1)
+                .map((hit) => hit.station)
+                .toList();
+
+        expect(prefixHits, ['sacheon', 'sacheon', 'sapyeong']);
+      },
+    );
+
+    test('keeps selected line filter while applying relevance priority', () {
+      final hits = filterStationHits(
+        stations: stations,
+        lines: lines,
+        selectedLine: 'Line 4',
+        query: 'sa',
+        allLines: 'All',
+      );
+
+      expect(hits, hasLength(1));
+      expect(hits.first.line, 'Line 4');
+      expect(hits.first.station, 'sacheon');
+    });
+
+    test('returns empty when query is blank', () {
+      final hits = filterStationHits(
+        stations: stations,
+        lines: lines,
+        selectedLine: 'All',
+        query: '   ',
+        allLines: 'All',
+      );
+
+      expect(hits, isEmpty);
     });
   });
 
   group('ApiLoggingInterceptor', () {
     test('logs successful responses', () async {
       final adapter = _ScriptedHttpClientAdapter((options, _) {
-        return _jsonResponse(
-          {
-            'clientMessage': 'ok',
-            'serverMessage': 'ok',
-            'data': {'value': 1},
-          },
-          200,
-        );
+        return _jsonResponse({
+          'clientMessage': 'ok',
+          'serverMessage': 'ok',
+          'data': {'value': 1},
+        }, 200);
       });
-      final dio = Dio(BaseOptions(baseUrl: 'https://dev-api.metroeye.click'))
-        ..httpClientAdapter = adapter
-        ..interceptors.add(ApiLoggingInterceptor(apiName: 'Test API'));
+      final dio =
+          Dio(BaseOptions(baseUrl: 'https://dev-api.metroeye.click'))
+            ..httpClientAdapter = adapter
+            ..interceptors.add(ApiLoggingInterceptor(apiName: 'Test API'));
 
       await dio.get<Map<String, dynamic>>('/test');
 
@@ -332,74 +489,68 @@ void main() {
   });
 
   group('AuthRecoveryInterceptor', () {
-    test('retries protected request after 401 and logs both responses', () async {
-      const initialSession = DeviceSession(
-        osType: 'ANDROID',
-        uuid: 'device-uuid',
-        secret: 'secret',
-        accessToken: 'old-access',
-        refreshToken: 'refresh-token',
-        expiresIn: 180,
-      );
-      final tokenStorage = _FakeDeviceTokenStorage(initialSession: initialSession);
-      final recoveryService = _FakeAuthRecoveryService(
-        initialSession.copyWith(accessToken: 'new-access'),
-      );
-      final adapter = _ScriptedHttpClientAdapter((options, callCount) {
-        final authorization = options.headers['Authorization'];
+    test(
+      'retries protected request after 401 and logs both responses',
+      () async {
+        const initialSession = DeviceSession(
+          osType: 'ANDROID',
+          uuid: 'device-uuid',
+          secret: 'secret',
+          accessToken: 'old-access',
+          refreshToken: 'refresh-token',
+          expiresIn: 180,
+        );
+        final tokenStorage = _FakeDeviceTokenStorage(
+          initialSession: initialSession,
+        );
+        final recoveryService = _FakeAuthRecoveryService(
+          initialSession.copyWith(accessToken: 'new-access'),
+        );
+        final adapter = _ScriptedHttpClientAdapter((options, callCount) {
+          final authorization = options.headers['Authorization'];
 
-        if (callCount == 1) {
-          expect(authorization, 'Bearer old-access');
-          return _jsonResponse(
-            {
+          if (callCount == 1) {
+            expect(authorization, 'Bearer old-access');
+            return _jsonResponse({
               'clientMessage': '',
               'serverMessage': 'Authentication failed.',
               'data': null,
-            },
-            401,
-          );
-        }
+            }, 401);
+          }
 
-        expect(authorization, 'Bearer new-access');
-        return _jsonResponse(
-          {
+          expect(authorization, 'Bearer new-access');
+          return _jsonResponse({
             'clientMessage': '',
             'serverMessage': '',
             'data': [
-              {
-                'id': 1,
-                'name': 'Line 1',
-                'code': 'LINE_1',
-                'color': '#0033A0',
-              },
+              {'lineId': 1, 'lineName': 'Line 1', 'color': '#0033A0'},
             ],
-          },
-          200,
+          }, 200);
+        });
+        final dio = Dio(BaseOptions(baseUrl: 'https://dev-api.metroeye.click'))
+          ..httpClientAdapter = adapter;
+        dio.interceptors.add(
+          AuthRecoveryInterceptor(
+            apiName: 'Line API',
+            dio: dio,
+            tokenStorage: tokenStorage,
+            authRecoveryService: recoveryService,
+          ),
         );
-      });
-      final dio = Dio(BaseOptions(baseUrl: 'https://dev-api.metroeye.click'))
-        ..httpClientAdapter = adapter;
-      dio.interceptors.add(
-        AuthRecoveryInterceptor(
-          apiName: 'Line API',
-          dio: dio,
-          tokenStorage: tokenStorage,
-          authRecoveryService: recoveryService,
-        ),
-      );
-      dio.interceptors.add(ApiLoggingInterceptor(apiName: 'Line API'));
+        dio.interceptors.add(ApiLoggingInterceptor(apiName: 'Line API'));
 
-      final service = LineApiService(dio: dio);
-      final lines = await service.fetchLines();
+        final service = LineApiService(dio: dio);
+        final lines = await service.fetchLines();
 
-      expect(lines, hasLength(1));
-      expect(adapter.requests, hasLength(2));
-      expect(recoveryService.recoverCalls, 1);
+        expect(lines, hasLength(1));
+        expect(adapter.requests, hasLength(2));
+        expect(recoveryService.recoverCalls, 1);
 
-      final output = logs.join('\n');
-      expect(output, contains('statusCode=401'));
-      expect(output, contains('statusCode=200'));
-    });
+        final output = logs.join('\n');
+        expect(output, contains('statusCode=401'));
+        expect(output, contains('statusCode=200'));
+      },
+    );
 
     test(
       'treats auth failure messages as token errors even when status is not 401',
@@ -420,31 +571,20 @@ void main() {
         );
         final adapter = _ScriptedHttpClientAdapter((options, callCount) {
           if (callCount == 1) {
-            return _jsonResponse(
-              {
-                'clientMessage': '',
-                'serverMessage': 'Authentication failed.',
-                'data': null,
-              },
-              403,
-            );
+            return _jsonResponse({
+              'clientMessage': '',
+              'serverMessage': 'Authentication failed.',
+              'data': null,
+            }, 403);
           }
 
-          return _jsonResponse(
-            {
-              'clientMessage': '',
-              'serverMessage': '',
-              'data': [
-                {
-                  'id': 1,
-                  'name': 'Line 1',
-                  'code': 'LINE_1',
-                  'color': '#0033A0',
-                },
-              ],
-            },
-            200,
-          );
+          return _jsonResponse({
+            'clientMessage': '',
+            'serverMessage': '',
+            'data': [
+              {'lineId': 1, 'lineName': 'Line 1', 'color': '#0033A0'},
+            ],
+          }, 200);
         });
         final dio = Dio(BaseOptions(baseUrl: 'https://dev-api.metroeye.click'))
           ..httpClientAdapter = adapter;
@@ -612,12 +752,14 @@ class _FakeLineApiService extends LineApiService {
 }
 
 class _FakeLineCacheStorage implements LineCacheStorage {
-  _FakeLineCacheStorage({this.cachedLines = const []});
+  _FakeLineCacheStorage({this.cachedLines = const [], bool hasCache = false})
+    : _hasCache = hasCache || cachedLines.isNotEmpty;
 
   final List<LineModel> cachedLines;
   int writeCalls = 0;
   int readCalls = 0;
   String? rawJson;
+  bool _hasCache;
 
   @override
   Future<String?> readRawJson() async => rawJson;
@@ -625,12 +767,66 @@ class _FakeLineCacheStorage implements LineCacheStorage {
   @override
   Future<List<LineModel>> readLines() async {
     readCalls += 1;
+
+    if (!_hasCache) {
+      throw const ApiException('No cached line data found.');
+    }
+
     return cachedLines;
   }
 
   @override
   Future<void> writeRawJson(String json) async {
     rawJson = json;
+    _hasCache = true;
+    writeCalls += 1;
+  }
+}
+
+class _FakeStationApiService extends StationApiService {
+  _FakeStationApiService(this.stations) : super(dio: Dio());
+
+  final List<StationModel> stations;
+  int fetchCalls = 0;
+
+  @override
+  Future<List<StationModel>> fetchStations() async {
+    fetchCalls += 1;
+
+    return stations;
+  }
+}
+
+class _FakeStationCacheStorage implements StationCacheStorage {
+  _FakeStationCacheStorage({
+    this.cachedStations = const [],
+    bool hasCache = false,
+  }) : _hasCache = hasCache || cachedStations.isNotEmpty;
+
+  final List<StationModel> cachedStations;
+  int writeCalls = 0;
+  int readCalls = 0;
+  String? rawJson;
+  bool _hasCache;
+
+  @override
+  Future<String?> readRawJson() async => rawJson;
+
+  @override
+  Future<List<StationModel>> readStations() async {
+    readCalls += 1;
+
+    if (!_hasCache) {
+      throw const ApiException('No cached station data found.');
+    }
+
+    return cachedStations;
+  }
+
+  @override
+  Future<void> writeRawJson(String json) async {
+    rawJson = json;
+    _hasCache = true;
     writeCalls += 1;
   }
 }
@@ -639,7 +835,7 @@ class _ScriptedHttpClientAdapter implements HttpClientAdapter {
   _ScriptedHttpClientAdapter(this._handler);
 
   final FutureOr<ResponseBody> Function(RequestOptions options, int callCount)
-      _handler;
+  _handler;
   final List<RequestOptions> requests = <RequestOptions>[];
 
   @override
