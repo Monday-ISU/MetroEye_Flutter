@@ -4,6 +4,7 @@ import 'package:metroeye_flutter/core/line/line_model.dart';
 import 'package:metroeye_flutter/core/line/line_service.dart';
 import 'package:metroeye_flutter/core/station/station_model.dart';
 import 'package:metroeye_flutter/core/station/station_service.dart';
+import 'package:metroeye_flutter/ui/realtime_train_position/realtime_train_position_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -368,7 +369,17 @@ class _HomeScreenState extends State<HomeScreen> {
                         subtitle:
                             selectedLine == allLines ? Text(hit.line) : null,
                         onTap: () {
-                          // TODO: Navigate to the next screen.
+                          Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder:
+                                  (_) => RealtimeTrainPositionScreen(
+                                    stationName: hit.station,
+                                    stationCode: hit.stationCode,
+                                    lineId: hit.lineId,
+                                    lineName: hit.line,
+                                  ),
+                            ),
+                          );
                         },
                       );
                     },
