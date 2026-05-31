@@ -19,6 +19,7 @@ import 'package:metroeye_flutter/core/line/line_service.dart';
 import 'package:metroeye_flutter/core/network/api_exception.dart';
 import 'package:metroeye_flutter/core/network/api_logging_interceptor.dart';
 import 'package:metroeye_flutter/core/network/auth_recovery_interceptor.dart';
+import 'package:metroeye_flutter/core/network/client_version_interceptor.dart';
 import 'package:metroeye_flutter/core/station/station_api_service.dart';
 import 'package:metroeye_flutter/core/station/station_cache_storage.dart';
 import 'package:metroeye_flutter/core/station/station_model.dart';
@@ -517,6 +518,24 @@ void main() {
       expect(output, contains('[Test API] response'));
       expect(output, contains('statusCode=200'));
       expect(output, contains('"value":1'));
+    });
+  });
+
+  group('ClientVersionInterceptor', () {
+    test('adds Client-Version header from app version loader', () async {
+      final adapter = _ScriptedHttpClientAdapter((options, callCount) {
+        expect(options.headers[ClientVersionInterceptor.headerName], '1.0.0');
+        return _jsonResponse({'data': null}, 200);
+      });
+      final dio = Dio(BaseOptions(baseUrl: 'https://dev-api.metroeye.click'))
+        ..httpClientAdapter = adapter;
+      dio.interceptors.add(
+        ClientVersionInterceptor(loadClientVersion: () async => '1.0.0'),
+      );
+
+      await dio.get<void>('/v1/stations');
+
+      expect(adapter.requests, hasLength(1));
     });
   });
 

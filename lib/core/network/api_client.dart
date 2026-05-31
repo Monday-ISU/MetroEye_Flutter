@@ -3,6 +3,7 @@ import 'package:metroeye_flutter/core/auth/auth_recovery_service.dart';
 import 'package:metroeye_flutter/core/device/device_token_storage.dart';
 import 'package:metroeye_flutter/core/network/api_logging_interceptor.dart';
 import 'package:metroeye_flutter/core/network/auth_recovery_interceptor.dart';
+import 'package:metroeye_flutter/core/network/client_version_interceptor.dart';
 
 class ApiClient {
   static const String baseUrl = 'https://dev-api.metroeye.click';
@@ -15,10 +16,9 @@ class ApiClient {
     );
   }
 
-  static Dio createPublicDio({
-    required String apiName,
-  }) {
+  static Dio createPublicDio({required String apiName}) {
     final dio = Dio(_baseOptions());
+    dio.interceptors.add(ClientVersionInterceptor());
     dio.interceptors.add(ApiLoggingInterceptor(apiName: apiName));
     return dio;
   }
@@ -29,6 +29,7 @@ class ApiClient {
     required AuthRecoveryService authRecoveryService,
   }) {
     final dio = Dio(_baseOptions());
+    dio.interceptors.add(ClientVersionInterceptor());
     dio.interceptors.add(
       AuthRecoveryInterceptor(
         apiName: apiName,
