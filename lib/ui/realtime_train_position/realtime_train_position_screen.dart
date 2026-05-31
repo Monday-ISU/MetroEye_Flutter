@@ -20,12 +20,14 @@ class RealtimeTrainPositionScreen extends StatefulWidget {
   const RealtimeTrainPositionScreen({
     super.key,
     required this.stationName,
+    required this.stationId,
     required this.stationCode,
     required this.lineId,
     required this.connectedLines,
   }) : assert(connectedLines.length > 0);
 
   final String stationName;
+  final int stationId;
   final String stationCode;
   final int lineId;
   final List<RealtimeTrainPositionLine> connectedLines;

@@ -33,10 +33,17 @@ class SharedPreferencesStationCacheStorage implements StationCacheStorage {
       throw const ApiException('No cached station data found.');
     }
 
-    final decoded = jsonDecode(rawJson);
-    return asList(decoded)
-        .map((item) => StationModel.fromJson(asMap(item)))
-        .toList();
+    try {
+      final decoded = jsonDecode(rawJson);
+      return asList(
+        decoded,
+      ).map((item) => StationModel.fromJson(asMap(item))).toList();
+    } on Object catch (error) {
+      throw ApiException(
+        'Cached station data is invalid.',
+        details: error.toString(),
+      );
+    }
   }
 
   @override

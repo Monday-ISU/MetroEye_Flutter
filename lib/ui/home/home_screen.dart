@@ -17,6 +17,7 @@ class StationHit {
   const StationHit({
     required this.line,
     required this.station,
+    required this.stationId,
     required this.stationCode,
     required this.lineId,
     required this.matchPriority,
@@ -24,6 +25,7 @@ class StationHit {
 
   final String line;
   final String station;
+  final int stationId;
   final String stationCode;
   final int lineId;
   final int matchPriority;
@@ -77,6 +79,7 @@ List<StationHit> filterStationHits({
       StationHit(
         line: _lineNameForId(station.lineId, lines),
         station: station.stationName,
+        stationId: station.stationId,
         stationCode: station.stationCode,
         lineId: station.lineId,
         matchPriority: matchPriority,
@@ -426,6 +429,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               builder:
                                   (_) => RealtimeTrainPositionScreen(
                                     stationName: hit.station,
+                                    stationId: hit.stationId,
                                     stationCode: hit.stationCode,
                                     lineId: hit.lineId,
                                     connectedLines: connectedLines,

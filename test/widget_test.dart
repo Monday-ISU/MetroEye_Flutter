@@ -314,6 +314,7 @@ void main() {
       () async {
         final apiService = _FakeStationApiService(const [
           StationModel(
+            stationId: 1,
             stationName: 'City Hall',
             stationCode: '1001',
             lineId: 1,
@@ -341,7 +342,12 @@ void main() {
         final apiService = _FakeStationApiService(const []);
         final cacheStorage = _FakeStationCacheStorage(
           cachedStations: const [
-            StationModel(stationName: 'Gangnam', stationCode: '222', lineId: 2),
+            StationModel(
+              stationId: 2,
+              stationName: 'Gangnam',
+              stationCode: '222',
+              lineId: 2,
+            ),
           ],
         );
         final service = StationService(
@@ -368,12 +374,38 @@ void main() {
       LineModel(lineId: 9, lineName: 'Line 9', color: '#BDB092'),
     ];
     const stations = [
-      StationModel(stationName: 'sa', stationCode: '100', lineId: 2),
-      StationModel(stationName: 'sacheon', stationCode: '101', lineId: 2),
-      StationModel(stationName: 'sacheon', stationCode: '102', lineId: 4),
-      StationModel(stationName: 'sinsa', stationCode: '103', lineId: 3),
-      StationModel(stationName: 'sapyeong', stationCode: '104', lineId: 6),
       StationModel(
+        stationId: 100,
+        stationName: 'sa',
+        stationCode: '100',
+        lineId: 2,
+      ),
+      StationModel(
+        stationId: 101,
+        stationName: 'sacheon',
+        stationCode: '101',
+        lineId: 2,
+      ),
+      StationModel(
+        stationId: 102,
+        stationName: 'sacheon',
+        stationCode: '102',
+        lineId: 4,
+      ),
+      StationModel(
+        stationId: 103,
+        stationName: 'sinsa',
+        stationCode: '103',
+        lineId: 3,
+      ),
+      StationModel(
+        stationId: 104,
+        stationName: 'sapyeong',
+        stationCode: '104',
+        lineId: 6,
+      ),
+      StationModel(
+        stationId: 105,
         stationName: 'yeoksamsageori',
         stationCode: '105',
         lineId: 9,
