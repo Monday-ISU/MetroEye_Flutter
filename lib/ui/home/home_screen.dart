@@ -4,6 +4,7 @@ import 'package:metroeye_flutter/core/line/line_model.dart';
 import 'package:metroeye_flutter/core/line/line_service.dart';
 import 'package:metroeye_flutter/core/station/station_model.dart';
 import 'package:metroeye_flutter/core/station/station_service.dart';
+import 'package:metroeye_flutter/ui/realtime_train_position/realtime_train_position_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -128,6 +129,52 @@ String _lineNameForId(int lineId, List<LineModel> lines) {
   }
 
   return '';
+}
+
+List<RealtimeTrainPositionLine> connectedLinesForStation({
+  required StationHit hit,
+  required List<StationModel> stations,
+  required List<LineModel> lines,
+}) {
+  final linesById = {for (final line in lines) line.lineId: line};
+  final seenLineIds = <int>{};
+  final connectedLines = <RealtimeTrainPositionLine>[];
+
+  for (final station in stations) {
+    if (station.stationName != hit.station ||
+        !seenLineIds.add(station.lineId)) {
+      continue;
+    }
+
+    final line = linesById[station.lineId];
+    if (line == null) {
+      continue;
+    }
+
+    connectedLines.add(
+      RealtimeTrainPositionLine(
+        lineId: line.lineId,
+        lineName: line.lineName,
+        color: line.colorValue,
+      ),
+    );
+  }
+
+  if (!seenLineIds.contains(hit.lineId)) {
+    final selectedLine = linesById[hit.lineId];
+    if (selectedLine != null) {
+      connectedLines.add(
+        RealtimeTrainPositionLine(
+          lineId: selectedLine.lineId,
+          lineName: selectedLine.lineName,
+          color: selectedLine.colorValue,
+        ),
+      );
+    }
+  }
+
+  connectedLines.sort((a, b) => a.lineId.compareTo(b.lineId));
+  return connectedLines;
 }
 
 class _HomeScreenState extends State<HomeScreen> {
@@ -368,7 +415,23 @@ class _HomeScreenState extends State<HomeScreen> {
                         subtitle:
                             selectedLine == allLines ? Text(hit.line) : null,
                         onTap: () {
-                          // TODO: Navigate to the next screen.
+                          final connectedLines = connectedLinesForStation(
+                            hit: hit,
+                            stations: stations,
+                            lines: apiLines,
+                          );
+
+                          Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder:
+                                  (_) => RealtimeTrainPositionScreen(
+                                    stationName: hit.station,
+                                    stationCode: hit.stationCode,
+                                    lineId: hit.lineId,
+                                    connectedLines: connectedLines,
+                                  ),
+                            ),
+                          );
                         },
                       );
                     },
