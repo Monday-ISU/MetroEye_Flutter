@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:metroeye_flutter/core/station/adjacent_station_model.dart';
+import 'package:metroeye_flutter/core/station/station_api_service.dart';
+import 'package:metroeye_flutter/core/station/station_cache_storage.dart';
+import 'package:metroeye_flutter/core/station/station_model.dart';
 import 'package:metroeye_flutter/core/theme/app_colors.dart';
 import 'package:metroeye_flutter/core/theme/app_typography.dart';
 
@@ -17,20 +21,27 @@ class RealtimeTrainPositionLine {
 }
 
 class RealtimeTrainPositionScreen extends StatefulWidget {
-  const RealtimeTrainPositionScreen({
+  RealtimeTrainPositionScreen({
     super.key,
     required this.stationName,
     required this.stationId,
     required this.stationCode,
     required this.lineId,
     required this.connectedLines,
-  }) : assert(connectedLines.length > 0);
+    StationApiService? stationApiService,
+    StationCacheStorage? stationCacheStorage,
+  }) : _stationApiService = stationApiService ?? StationApiService(),
+       _stationCacheStorage =
+           stationCacheStorage ?? SharedPreferencesStationCacheStorage(),
+       assert(connectedLines.isNotEmpty);
 
   final String stationName;
   final int stationId;
   final String stationCode;
   final int lineId;
   final List<RealtimeTrainPositionLine> connectedLines;
+  final StationApiService _stationApiService;
+  final StationCacheStorage _stationCacheStorage;
 
   @override
   State<RealtimeTrainPositionScreen> createState() {
@@ -41,19 +52,24 @@ class RealtimeTrainPositionScreen extends StatefulWidget {
 class _RealtimeTrainPositionScreenState
     extends State<RealtimeTrainPositionScreen> {
   late RealtimeTrainPositionLine _selectedLine;
+  late Future<List<_AdjacentStationTrack>> _tracksFuture;
 
   @override
   void initState() {
     super.initState();
     _selectedLine = _resolveSelectedLine();
+    _tracksFuture = _loadAdjacentStationTracks();
   }
 
   @override
   void didUpdateWidget(covariant RealtimeTrainPositionScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.lineId != widget.lineId ||
+        oldWidget.stationId != widget.stationId ||
+        oldWidget.stationCode != widget.stationCode ||
         oldWidget.connectedLines != widget.connectedLines) {
       _selectedLine = _resolveSelectedLine();
+      _tracksFuture = _loadAdjacentStationTracks();
     }
   }
 
@@ -61,7 +77,6 @@ class _RealtimeTrainPositionScreenState
   Widget build(BuildContext context) {
     final normalizedStationName = _displayStationName(widget.stationName);
     final lineColor = _selectedLine.color;
-    final tracks = _dummyAdjacentStationTracks(normalizedStationName);
 
     return Scaffold(
       backgroundColor: AppColors.gray1,
@@ -86,9 +101,7 @@ class _RealtimeTrainPositionScreenState
                       selected: line.lineId == _selectedLine.lineId,
                     ),
                     onTap: () {
-                      setState(() {
-                        _selectedLine = line;
-                      });
+                      _selectLine(line);
                     },
                   ),
                   const SizedBox(width: 8),
@@ -101,14 +114,122 @@ class _RealtimeTrainPositionScreenState
               style: AppTypography.body4.copyWith(color: Colors.black),
             ),
             const SizedBox(height: 17),
-            for (var index = 0; index < tracks.length; index++) ...[
-              if (index > 0) const SizedBox(height: 20),
-              _RailDirectionView(track: tracks[index], lineColor: lineColor),
-            ],
+            FutureBuilder<List<_AdjacentStationTrack>>(
+              future: _tracksFuture,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return const SizedBox(
+                    height: 140,
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+
+                if (snapshot.hasError) {
+                  debugPrint('Adjacent station load error: ${snapshot.error}');
+                  debugPrint(
+                    'Adjacent station load stack: ${snapshot.stackTrace}',
+                  );
+                  return const _RailStatusMessage(
+                    message: '인접 역 정보를 불러오지 못했습니다.',
+                  );
+                }
+
+                final tracks = snapshot.data ?? const <_AdjacentStationTrack>[];
+                if (tracks.isEmpty) {
+                  return const _RailStatusMessage(message: '인접 역 정보가 없습니다.');
+                }
+
+                return Column(
+                  children: [
+                    for (var index = 0; index < tracks.length; index++) ...[
+                      if (index > 0) const SizedBox(height: 20),
+                      _RailDirectionView(
+                        track: tracks[index],
+                        lineColor: lineColor,
+                      ),
+                    ],
+                  ],
+                );
+              },
+            ),
           ],
         ),
       ),
     );
+  }
+
+  void _selectLine(RealtimeTrainPositionLine line) {
+    if (line.lineId == _selectedLine.lineId) {
+      return;
+    }
+
+    setState(() {
+      _selectedLine = line;
+      _tracksFuture = _loadAdjacentStationTracks();
+    });
+  }
+
+  Future<List<_AdjacentStationTrack>> _loadAdjacentStationTracks() async {
+    final adjacentStations = await widget._stationApiService
+        .fetchAdjacentStations(
+          stationId: widget.stationId,
+          lineId: _selectedLine.lineId,
+          size: 3,
+        );
+
+    final cachedStations = await _loadCachedStationsSafely();
+    return _buildAdjacentStationTracks(
+      adjacentStations: adjacentStations,
+      stations: cachedStations,
+    );
+  }
+
+  Future<List<StationModel>> _loadCachedStationsSafely() async {
+    try {
+      return await widget._stationCacheStorage.readStations();
+    } on Object catch (error) {
+      debugPrint('Station cache read failed for adjacent tracks: $error');
+      return const <StationModel>[];
+    }
+  }
+
+  List<_AdjacentStationTrack> _buildAdjacentStationTracks({
+    required List<AdjacentStationModel> adjacentStations,
+    required List<StationModel> stations,
+  }) {
+    final stationNamesByCode = {
+      for (final station in stations)
+        station.stationCode: _displayStationName(station.stationName),
+    };
+    final sortedAdjacentStations = [...adjacentStations]
+      ..sort(_compareAdjacentStations);
+
+    return sortedAdjacentStations
+        .where((track) => track.stationCodes.isNotEmpty)
+        .map((track) {
+          final isPrev =
+              track.directionType == AdjacentStationDirectionType.prev;
+          final currentStationIndex = _currentStationSlotIndex(isPrev: isPrev);
+          final stationCodeSlots = _fixedStationCodeSlots(
+            stationCodes: track.stationCodes,
+            currentStationCode: widget.stationCode,
+            currentStationIndex: currentStationIndex,
+            isPrev: isPrev,
+          );
+
+          return _AdjacentStationTrack(
+            stationNames:
+                stationCodeSlots
+                    .map((code) => stationNamesByCode[code] ?? code)
+                    .toList(),
+            currentStationIndex: currentStationIndex,
+            arrowDirection:
+                isPrev ? _RailArrowDirection.right : _RailArrowDirection.left,
+            flipTrainIcon: isPrev,
+            trains: const [],
+          );
+        })
+        .toList();
   }
 
   RealtimeTrainPositionLine _resolveSelectedLine() {
@@ -129,6 +250,68 @@ class _RealtimeTrainPositionScreenState
   }
 }
 
+int _compareAdjacentStations(AdjacentStationModel a, AdjacentStationModel b) {
+  final directionOrder = _directionSortOrder(
+    a.directionType,
+  ).compareTo(_directionSortOrder(b.directionType));
+  if (directionOrder != 0) {
+    return directionOrder;
+  }
+
+  return a.directionIndex.compareTo(b.directionIndex);
+}
+
+int _directionSortOrder(AdjacentStationDirectionType directionType) {
+  return switch (directionType) {
+    AdjacentStationDirectionType.prev => 0,
+    AdjacentStationDirectionType.next => 1,
+  };
+}
+
+List<String> _fixedStationCodeSlots({
+  required List<String> stationCodes,
+  required String currentStationCode,
+  required int currentStationIndex,
+  required bool isPrev,
+}) {
+  final slots = List<String>.filled(_maxVisibleRailStationCount, '');
+  final limitedStationCodes = stationCodes.take(_maxVisibleRailStationCount);
+  final selectedSourceIndex = stationCodes.indexOf(currentStationCode);
+
+  if (selectedSourceIndex >= 0) {
+    for (
+      var sourceIndex = 0;
+      sourceIndex < stationCodes.length;
+      sourceIndex++
+    ) {
+      final slotIndex = currentStationIndex + sourceIndex - selectedSourceIndex;
+      if (slotIndex < 0 || slotIndex >= slots.length) {
+        continue;
+      }
+      slots[slotIndex] = stationCodes[sourceIndex];
+    }
+    return slots;
+  }
+
+  final fallbackStartIndex =
+      isPrev ? slots.length - limitedStationCodes.length : 0;
+  var offset = 0;
+  for (final stationCode in limitedStationCodes) {
+    slots[fallbackStartIndex + offset] = stationCode;
+    offset += 1;
+  }
+
+  return slots;
+}
+
+int _currentStationSlotIndex({required bool isPrev}) {
+  if (isPrev) {
+    return _maxVisibleRailStationCount - 1;
+  }
+
+  return 0;
+}
+
 int _lineNumber(String lineName, int lineId) {
   final match = RegExp(r'\d+').firstMatch(lineName);
   if (match != null) {
@@ -145,77 +328,24 @@ String _lineLabel(String lineName, int lineId) {
   return '${_lineNumber(lineName, lineId)}';
 }
 
-List<_AdjacentStationTrack> _dummyAdjacentStationTracks(
-  String currentStationName,
-) {
-  return [
-    _AdjacentStationTrack(
-      stationNames: ['', '', '종점', currentStationName],
-      currentStationIndex: 3,
-      arrowDirection: _RailArrowDirection.right,
-      flipTrainIcon: true,
-      trains: const [
-        _TrainPosition(
-          stationIndex: 2,
-          status: _TrainRunStatus.departed,
-          destination: '출발',
-          number: '4134',
+class _RailStatusMessage extends StatelessWidget {
+  const _RailStatusMessage({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 140,
+      child: Center(
+        child: Text(
+          message,
+          textAlign: TextAlign.center,
+          style: AppTypography.body5.copyWith(color: AppColors.gray5),
         ),
-      ],
-    ),
-    _AdjacentStationTrack(
-      stationNames: ['선바위', '남태령', '사당', currentStationName],
-      currentStationIndex: 3,
-      arrowDirection: _RailArrowDirection.right,
-      flipTrainIcon: true,
-      trains: const [
-        _TrainPosition(
-          stationIndex: 0,
-          status: _TrainRunStatus.departed,
-          destination: '출발',
-          number: '4130',
-        ),
-        _TrainPosition(
-          stationIndex: 1,
-          status: _TrainRunStatus.arrived,
-          destination: '도착',
-          number: '4131',
-        ),
-        _TrainPosition(
-          stationIndex: 2,
-          status: _TrainRunStatus.entering,
-          destination: '진입',
-          number: '4132',
-        ),
-        _TrainPosition(
-          stationIndex: 3,
-          status: _TrainRunStatus.previousStationDeparted,
-          destination: '전역출발',
-          number: '4133',
-        ),
-      ],
-    ),
-    _AdjacentStationTrack(
-      stationNames: [currentStationName, '동작', '이촌', '신용산'],
-      currentStationIndex: 0,
-      arrowDirection: _RailArrowDirection.left,
-      flipTrainIcon: false,
-      trains: const [
-        _TrainPosition(
-          stationIndex: 0,
-          status: _TrainRunStatus.arrived,
-          destination: '오이도행',
-          number: '4132',
-        ),
-        _TrainPosition(
-          stationIndex: 1,
-          status: _TrainRunStatus.departed,
-          destination: '오이도행',
-          number: '4133',
-        ),
-      ],
-    ),
-  ];
+      ),
+    );
+  }
 }
 
 class _MetroEyeHeader extends StatelessWidget {

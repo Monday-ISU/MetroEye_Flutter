@@ -20,6 +20,7 @@ import 'package:metroeye_flutter/core/network/api_exception.dart';
 import 'package:metroeye_flutter/core/network/api_logging_interceptor.dart';
 import 'package:metroeye_flutter/core/network/auth_recovery_interceptor.dart';
 import 'package:metroeye_flutter/core/network/client_version_interceptor.dart';
+import 'package:metroeye_flutter/core/station/adjacent_station_model.dart';
 import 'package:metroeye_flutter/core/station/station_api_service.dart';
 import 'package:metroeye_flutter/core/station/station_cache_storage.dart';
 import 'package:metroeye_flutter/core/station/station_model.dart';
@@ -362,6 +363,48 @@ void main() {
         expect(cacheStorage.readCalls, 1);
         expect(stations, hasLength(1));
         expect(stations.first.stationName, 'Gangnam');
+      },
+    );
+  });
+
+  group('StationApiService', () {
+    test(
+      'fetches adjacent stations with station id, line id, and size',
+      () async {
+        final adapter = _ScriptedHttpClientAdapter((options, callCount) {
+          expect(options.path, '/v1/stations/141/adjacent-stations');
+          expect(options.queryParameters['lineId'], 1);
+          expect(options.queryParameters['size'], 3);
+          return _jsonResponse({
+            'clientMessage': '조회되었습니다.',
+            'serverMessage': 'Success',
+            'data': [
+              {
+                'directionType': 'PREV',
+                'directionIndex': 1,
+                'stationCodes': [
+                  '1001080144',
+                  '1001080143',
+                  '1001080142',
+                  '1001000141',
+                ],
+              },
+            ],
+          }, 200);
+        });
+        final dio = Dio(BaseOptions(baseUrl: 'https://dev-api.metroeye.click'))
+          ..httpClientAdapter = adapter;
+        final service = StationApiService(dio: dio);
+
+        final tracks = await service.fetchAdjacentStations(
+          stationId: 141,
+          lineId: 1,
+        );
+
+        expect(tracks, hasLength(1));
+        expect(tracks.first.directionType, AdjacentStationDirectionType.prev);
+        expect(tracks.first.directionIndex, 1);
+        expect(tracks.first.stationCodes.last, '1001000141');
       },
     );
   });
