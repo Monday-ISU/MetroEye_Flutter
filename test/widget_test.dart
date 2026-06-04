@@ -19,6 +19,8 @@ import 'package:metroeye_flutter/core/line/line_service.dart';
 import 'package:metroeye_flutter/core/network/api_exception.dart';
 import 'package:metroeye_flutter/core/network/api_logging_interceptor.dart';
 import 'package:metroeye_flutter/core/network/auth_recovery_interceptor.dart';
+import 'package:metroeye_flutter/core/network/client_version_interceptor.dart';
+import 'package:metroeye_flutter/core/station/adjacent_station_model.dart';
 import 'package:metroeye_flutter/core/station/station_api_service.dart';
 import 'package:metroeye_flutter/core/station/station_cache_storage.dart';
 import 'package:metroeye_flutter/core/station/station_model.dart';
@@ -314,6 +316,7 @@ void main() {
       () async {
         final apiService = _FakeStationApiService(const [
           StationModel(
+            stationId: 1,
             stationName: 'City Hall',
             stationCode: '1001',
             lineId: 1,
@@ -341,7 +344,12 @@ void main() {
         final apiService = _FakeStationApiService(const []);
         final cacheStorage = _FakeStationCacheStorage(
           cachedStations: const [
-            StationModel(stationName: 'Gangnam', stationCode: '222', lineId: 2),
+            StationModel(
+              stationId: 2,
+              stationName: 'Gangnam',
+              stationCode: '222',
+              lineId: 2,
+            ),
           ],
         );
         final service = StationService(
@@ -359,6 +367,48 @@ void main() {
     );
   });
 
+  group('StationApiService', () {
+    test(
+      'fetches adjacent stations with station id, line id, and size',
+      () async {
+        final adapter = _ScriptedHttpClientAdapter((options, callCount) {
+          expect(options.path, '/v1/stations/141/adjacent-stations');
+          expect(options.queryParameters['lineId'], 1);
+          expect(options.queryParameters['size'], 3);
+          return _jsonResponse({
+            'clientMessage': '조회되었습니다.',
+            'serverMessage': 'Success',
+            'data': [
+              {
+                'directionType': 'PREV',
+                'directionIndex': 1,
+                'stationCodes': [
+                  '1001080144',
+                  '1001080143',
+                  '1001080142',
+                  '1001000141',
+                ],
+              },
+            ],
+          }, 200);
+        });
+        final dio = Dio(BaseOptions(baseUrl: 'https://dev-api.metroeye.click'))
+          ..httpClientAdapter = adapter;
+        final service = StationApiService(dio: dio);
+
+        final tracks = await service.fetchAdjacentStations(
+          stationId: 141,
+          lineId: 1,
+        );
+
+        expect(tracks, hasLength(1));
+        expect(tracks.first.directionType, AdjacentStationDirectionType.prev);
+        expect(tracks.first.directionIndex, 1);
+        expect(tracks.first.stationCodes.last, '1001000141');
+      },
+    );
+  });
+
   group('filterStationHits', () {
     const lines = [
       LineModel(lineId: 2, lineName: 'Line 2', color: '#00B140'),
@@ -368,12 +418,38 @@ void main() {
       LineModel(lineId: 9, lineName: 'Line 9', color: '#BDB092'),
     ];
     const stations = [
-      StationModel(stationName: 'sa', stationCode: '100', lineId: 2),
-      StationModel(stationName: 'sacheon', stationCode: '101', lineId: 2),
-      StationModel(stationName: 'sacheon', stationCode: '102', lineId: 4),
-      StationModel(stationName: 'sinsa', stationCode: '103', lineId: 3),
-      StationModel(stationName: 'sapyeong', stationCode: '104', lineId: 6),
       StationModel(
+        stationId: 100,
+        stationName: 'sa',
+        stationCode: '100',
+        lineId: 2,
+      ),
+      StationModel(
+        stationId: 101,
+        stationName: 'sacheon',
+        stationCode: '101',
+        lineId: 2,
+      ),
+      StationModel(
+        stationId: 102,
+        stationName: 'sacheon',
+        stationCode: '102',
+        lineId: 4,
+      ),
+      StationModel(
+        stationId: 103,
+        stationName: 'sinsa',
+        stationCode: '103',
+        lineId: 3,
+      ),
+      StationModel(
+        stationId: 104,
+        stationName: 'sapyeong',
+        stationCode: '104',
+        lineId: 6,
+      ),
+      StationModel(
+        stationId: 105,
         stationName: 'yeoksamsageori',
         stationCode: '105',
         lineId: 9,
@@ -485,6 +561,24 @@ void main() {
       expect(output, contains('[Test API] response'));
       expect(output, contains('statusCode=200'));
       expect(output, contains('"value":1'));
+    });
+  });
+
+  group('ClientVersionInterceptor', () {
+    test('adds Client-Version header from app version loader', () async {
+      final adapter = _ScriptedHttpClientAdapter((options, callCount) {
+        expect(options.headers[ClientVersionInterceptor.headerName], '1.0.0');
+        return _jsonResponse({'data': null}, 200);
+      });
+      final dio = Dio(BaseOptions(baseUrl: 'https://dev-api.metroeye.click'))
+        ..httpClientAdapter = adapter;
+      dio.interceptors.add(
+        ClientVersionInterceptor(loadClientVersion: () async => '1.0.0'),
+      );
+
+      await dio.get<void>('/v1/stations');
+
+      expect(adapter.requests, hasLength(1));
     });
   });
 
