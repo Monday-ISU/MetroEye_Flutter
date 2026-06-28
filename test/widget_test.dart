@@ -25,6 +25,7 @@ import 'package:metroeye_flutter/core/station/station_api_service.dart';
 import 'package:metroeye_flutter/core/station/station_cache_storage.dart';
 import 'package:metroeye_flutter/core/station/station_model.dart';
 import 'package:metroeye_flutter/core/station/station_service.dart';
+import 'package:metroeye_flutter/core/station/train_arrival_model.dart';
 import 'package:metroeye_flutter/ui/home/home_screen.dart';
 
 void main() {
@@ -405,6 +406,90 @@ void main() {
         expect(tracks.first.directionType, AdjacentStationDirectionType.prev);
         expect(tracks.first.directionIndex, 1);
         expect(tracks.first.stationCodes.last, '1001000141');
+      },
+    );
+
+    test('fetches train arrivals with station id', () async {
+      final adapter = _ScriptedHttpClientAdapter((options, callCount) {
+        expect(options.path, '/v1/stations/141/trains');
+        expect(options.queryParameters['lineId'], 4);
+        return _jsonResponse({
+          'clientMessage': '조회되었습니다.',
+          'serverMessage': 'Success',
+          'data': [
+            {
+              'subwayId': '1004',
+              'updnLine': '상행',
+              'statnFid': '1001000140',
+              'statnTid': '1001000142',
+              'statnId': '1001000141',
+              'btrainSttus': '일반',
+              'btrainNo': '1234',
+              'barvlDt': '180',
+              'bstatnNm': '당고개',
+              'arvlMsg2': '3분 후',
+              'arvlMsg3': '사당',
+              'arvlCd': '1',
+              'lstcarAt': '0',
+            },
+          ],
+        }, 200);
+      });
+      final dio = Dio(BaseOptions(baseUrl: 'https://dev-api.metroeye.click'))
+        ..httpClientAdapter = adapter;
+      final service = StationApiService(dio: dio);
+
+      final trains = await service.fetchTrains(stationId: 141, lineId: 4);
+
+      expect(trains, hasLength(1));
+      expect(trains.first, isA<TrainArrivalModel>());
+      expect(trains.first.directionType, AdjacentStationDirectionType.prev);
+      expect(trains.first.subwayId, '1004');
+      expect(trains.first.btrainNo, '1234');
+      expect(trains.first.arrivalSeconds, 180);
+      expect(trains.first.bstatnNm, '당고개');
+      expect(trains.first.arvlMsg2, '3분 후');
+      expect(trains.first.arvlMsg3, '사당');
+      expect(trains.first.arrivalCode, 1);
+      expect(trains.first.isLastTrain, isFalse);
+    });
+
+    test(
+      'maps line 2 inner and outer directions to adjacent track direction',
+      () {
+        final outerTrain = TrainArrivalModel.fromJson({
+          'subwayId': '1002',
+          'updnLine': '외선',
+          'statnFid': '1002000202',
+          'statnTid': '1002000243',
+          'statnId': '1002000201',
+          'btrainSttus': '일반',
+          'btrainNo': '2263',
+          'barvlDt': '150',
+          'bstatnNm': '성수',
+          'arvlMsg2': '2분 30초 후',
+          'arvlMsg3': '을지로3가',
+          'arvlCd': '99',
+          'lstcarAt': '0',
+        });
+        final innerTrain = TrainArrivalModel.fromJson({
+          'subwayId': '1002',
+          'updnLine': '내선',
+          'statnFid': '1002000243',
+          'statnTid': '1002000202',
+          'statnId': '1002000201',
+          'btrainSttus': '일반',
+          'btrainNo': '2226',
+          'barvlDt': '180',
+          'bstatnNm': '성수',
+          'arvlMsg2': '3분 후',
+          'arvlMsg3': '아현',
+          'arvlCd': '99',
+          'lstcarAt': '0',
+        });
+
+        expect(outerTrain.directionType, AdjacentStationDirectionType.prev);
+        expect(innerTrain.directionType, AdjacentStationDirectionType.next);
       },
     );
   });
