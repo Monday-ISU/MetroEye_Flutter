@@ -24,9 +24,11 @@ import 'package:metroeye_flutter/core/station/adjacent_station_model.dart';
 import 'package:metroeye_flutter/core/station/station_api_service.dart';
 import 'package:metroeye_flutter/core/station/station_cache_storage.dart';
 import 'package:metroeye_flutter/core/station/station_model.dart';
+import 'package:metroeye_flutter/core/station/station_search_storage.dart';
 import 'package:metroeye_flutter/core/station/station_service.dart';
 import 'package:metroeye_flutter/core/station/train_arrival_model.dart';
 import 'package:metroeye_flutter/ui/home/home_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   late DebugPrintCallback originalDebugPrint;
@@ -626,6 +628,83 @@ void main() {
     });
   });
 
+  group('StationSearchStorage', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    test(
+      'adds recent stations with newest first and removes duplicates',
+      () async {
+        var tick = 0;
+        final storage = SharedPreferencesStationSearchStorage(
+          now: () => DateTime(2026, 1, 1).add(Duration(minutes: tick++)),
+        );
+
+        await storage.addRecent(_stationSearchRecord(1, '이수', 4));
+        await storage.addRecent(_stationSearchRecord(2, '사당', 2));
+        final history = await storage.addRecent(
+          _stationSearchRecord(1, '이수', 4),
+        );
+
+        expect(history.recents.map((record) => record.stationId), [1, 2]);
+        expect(history.recents.first.stationName, '이수');
+      },
+    );
+
+    test('keeps recent station list within ten items', () async {
+      final storage = SharedPreferencesStationSearchStorage(
+        now: () => DateTime(2026, 1, 1),
+      );
+
+      for (var index = 0; index < 12; index++) {
+        await storage.addRecent(_stationSearchRecord(index, '역$index', index));
+      }
+
+      final history = await storage.readHistory();
+
+      expect(history.recents, hasLength(10));
+      expect(history.recents.first.stationId, 11);
+      expect(history.recents.last.stationId, 2);
+    });
+
+    test('toggles favorite stations', () async {
+      final storage = SharedPreferencesStationSearchStorage(
+        now: () => DateTime(2026, 1, 1),
+      );
+      final record = _stationSearchRecord(1, '이수', 4);
+
+      final added = await storage.toggleFavorite(record);
+      final removed = await storage.toggleFavorite(record);
+
+      expect(added.isFavorite(record), isTrue);
+      expect(removed.isFavorite(record), isFalse);
+      expect(removed.favorites, isEmpty);
+    });
+
+    test(
+      'keeps favorites separate for the same station on different lines',
+      () async {
+        final storage = SharedPreferencesStationSearchStorage(
+          now: () => DateTime(2026, 1, 1),
+        );
+        final line2Sadang = _stationSearchRecord(1, '사당', 2);
+        final line4Sadang = _stationSearchRecord(1, '사당', 4);
+
+        final added = await storage.toggleFavorite(line4Sadang);
+        final updated = await storage.toggleFavorite(line2Sadang);
+        final removedLine2 = await storage.toggleFavorite(line2Sadang);
+
+        expect(added.isFavorite(line4Sadang), isTrue);
+        expect(added.isFavorite(line2Sadang), isFalse);
+        expect(updated.isFavorite(line4Sadang), isTrue);
+        expect(updated.isFavorite(line2Sadang), isTrue);
+        expect(removedLine2.isFavorite(line4Sadang), isTrue);
+        expect(removedLine2.isFavorite(line2Sadang), isFalse);
+      },
+    );
+  });
+
   group('ApiLoggingInterceptor', () {
     test('logs successful responses', () async {
       final adapter = _ScriptedHttpClientAdapter((options, _) {
@@ -1038,5 +1117,21 @@ ResponseBody _jsonResponse(Map<String, dynamic> body, int statusCode) {
     headers: <String, List<String>>{
       Headers.contentTypeHeader: <String>[Headers.jsonContentType],
     },
+  );
+}
+
+StationSearchRecord _stationSearchRecord(
+  int stationId,
+  String stationName,
+  int lineId,
+) {
+  return StationSearchRecord(
+    stationId: stationId,
+    stationCode: 'code-$stationId',
+    stationName: stationName,
+    lineId: lineId,
+    lineName: 'Line $lineId',
+    lineColor: '#49729B',
+    updatedAt: DateTime(2026, 1, 1),
   );
 }
