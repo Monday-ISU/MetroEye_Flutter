@@ -6,6 +6,7 @@ import 'package:metroeye_flutter/core/network/api_exception.dart';
 import 'package:metroeye_flutter/core/network/api_response.dart';
 import 'package:metroeye_flutter/core/station/adjacent_station_model.dart';
 import 'package:metroeye_flutter/core/station/station_model.dart';
+import 'package:metroeye_flutter/core/station/train_arrival_model.dart';
 
 class StationApiService {
   StationApiService({
@@ -85,6 +86,36 @@ class StationApiService {
       throw ApiException.fromDioException(
         error,
         fallbackMessage: 'Adjacent Station API request failed.',
+      );
+    }
+  }
+
+  Future<List<TrainArrivalModel>> fetchTrains({
+    required int stationId,
+    required int lineId,
+  }) async {
+    try {
+      final response = await _dio.get<Map<String, dynamic>>(
+        '/v1/stations/$stationId/trains',
+        queryParameters: {'lineId': lineId},
+      );
+
+      final body = response.data;
+      if (body == null) {
+        throw const ApiException('Train Arrival API response is empty.');
+      }
+
+      return ApiResponse<List<TrainArrivalModel>>.fromJson(
+        body,
+        (data) =>
+            asList(
+              data,
+            ).map((item) => TrainArrivalModel.fromJson(asMap(item))).toList(),
+      ).data;
+    } on DioException catch (error) {
+      throw ApiException.fromDioException(
+        error,
+        fallbackMessage: 'Train Arrival API request failed.',
       );
     }
   }
