@@ -400,9 +400,11 @@ class _HomeScreenState extends State<HomeScreen> {
               stationCode: hit.stationCode,
               lineId: hit.lineId,
               connectedLines: connectedLines,
+              stationSearchStorage: _stationSearchStorage,
             ),
       ),
     );
+    await _loadSearchHistory();
   }
 
   @override
