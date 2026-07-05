@@ -3,6 +3,7 @@ import 'package:metroeye_flutter/core/station/adjacent_station_model.dart';
 import 'package:metroeye_flutter/core/station/station_api_service.dart';
 import 'package:metroeye_flutter/core/station/station_cache_storage.dart';
 import 'package:metroeye_flutter/core/station/station_model.dart';
+import 'package:metroeye_flutter/core/station/station_search_storage.dart';
 import 'package:metroeye_flutter/core/station/train_arrival_model.dart';
 import 'package:metroeye_flutter/core/theme/app_colors.dart';
 import 'package:metroeye_flutter/core/theme/app_typography.dart';
@@ -31,9 +32,12 @@ class RealtimeTrainPositionScreen extends StatefulWidget {
     required this.connectedLines,
     StationApiService? stationApiService,
     StationCacheStorage? stationCacheStorage,
+    StationSearchStorage? stationSearchStorage,
   }) : _stationApiService = stationApiService ?? StationApiService(),
        _stationCacheStorage =
            stationCacheStorage ?? SharedPreferencesStationCacheStorage(),
+       _stationSearchStorage =
+           stationSearchStorage ?? SharedPreferencesStationSearchStorage(),
        assert(connectedLines.isNotEmpty);
 
   final String stationName;
@@ -43,6 +47,7 @@ class RealtimeTrainPositionScreen extends StatefulWidget {
   final List<RealtimeTrainPositionLine> connectedLines;
   final StationApiService _stationApiService;
   final StationCacheStorage _stationCacheStorage;
+  final StationSearchStorage _stationSearchStorage;
 
   @override
   State<RealtimeTrainPositionScreen> createState() {
@@ -56,6 +61,8 @@ class _RealtimeTrainPositionScreenState
   late Future<List<_AdjacentStationTrack>> _tracksFuture;
   List<_AdjacentStationTrack>? _visibleTracks;
   _TrainPosition? _selectedTrain;
+  StationSearchHistory _searchHistory = StationSearchHistory.empty();
+  _SelectedStationContext? _favoriteStationContext;
   bool _isRefreshing = true;
 
   @override
@@ -64,6 +71,8 @@ class _RealtimeTrainPositionScreenState
     _selectedLine = _resolveSelectedLine();
     _tracksFuture = _loadAdjacentStationTracks();
     _watchTracksFuture(_tracksFuture);
+    _loadSearchHistory();
+    _loadFavoriteStationContext();
   }
 
   @override
@@ -77,8 +86,11 @@ class _RealtimeTrainPositionScreenState
       _tracksFuture = _loadAdjacentStationTracks();
       _visibleTracks = null;
       _selectedTrain = null;
+      _favoriteStationContext = null;
       _isRefreshing = true;
       _watchTracksFuture(_tracksFuture);
+      _loadSearchHistory();
+      _loadFavoriteStationContext();
     }
   }
 
@@ -86,6 +98,8 @@ class _RealtimeTrainPositionScreenState
   Widget build(BuildContext context) {
     final normalizedStationName = _displayStationName(widget.stationName);
     final lineColor = _selectedLine.color;
+    final selectedFavoriteRecord = _selectedLineSearchRecord();
+    final isFavorite = _searchHistory.isFavorite(selectedFavoriteRecord);
 
     return Scaffold(
       backgroundColor: AppColors.gray1,
@@ -130,6 +144,12 @@ class _RealtimeTrainPositionScreenState
                   ),
                 ),
                 const SizedBox(width: 12),
+                _FavoriteToggleButton(
+                  isFavorite: isFavorite,
+                  color: lineColor,
+                  onPressed: _toggleFavorite,
+                ),
+                const SizedBox(width: 8),
                 _RefreshControl(
                   isRefreshing: _isRefreshing,
                   color: lineColor,
@@ -212,8 +232,55 @@ class _RealtimeTrainPositionScreenState
 
     setState(() {
       _selectedLine = line;
+      _favoriteStationContext = null;
     });
+    _loadFavoriteStationContext();
     _refreshTracks(preserveVisibleTracks: false);
+  }
+
+  Future<void> _loadSearchHistory() async {
+    try {
+      final history = await widget._stationSearchStorage.readHistory();
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _searchHistory = history;
+      });
+    } on Object catch (error, stackTrace) {
+      debugPrint('Station search history load error: $error');
+      debugPrint('Station search history load stack: $stackTrace');
+    }
+  }
+
+  Future<void> _loadFavoriteStationContext() async {
+    final selectedLineId = _selectedLine.lineId;
+    final stations = await _loadCachedStationsSafely();
+    final selectedStation = _resolveSelectedStation(stations);
+    if (!mounted || _selectedLine.lineId != selectedLineId) {
+      return;
+    }
+
+    setState(() {
+      _favoriteStationContext = selectedStation;
+    });
+  }
+
+  Future<void> _toggleFavorite() async {
+    final stations = await _loadCachedStationsSafely();
+    final selectedStation = _resolveSelectedStation(stations);
+    final history = await widget._stationSearchStorage.toggleFavorite(
+      _selectedLineSearchRecord(selectedStation: selectedStation),
+    );
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _favoriteStationContext = selectedStation;
+      _searchHistory = history;
+    });
   }
 
   void _refreshTracks({bool preserveVisibleTracks = true}) {
@@ -314,6 +381,21 @@ class _RealtimeTrainPositionScreenState
       tracks: tracks,
       trainArrivals: trainArrivals,
       includeRunningArrivals: false,
+    );
+  }
+
+  StationSearchRecord _selectedLineSearchRecord({
+    _SelectedStationContext? selectedStation,
+  }) {
+    final station = selectedStation ?? _favoriteStationContext;
+    return StationSearchRecord(
+      stationId: station?.stationId ?? widget.stationId,
+      stationCode: station?.stationCode ?? widget.stationCode,
+      stationName: _displayStationName(widget.stationName),
+      lineId: _selectedLine.lineId,
+      lineName: _selectedLine.lineName,
+      lineColor: _colorToHex(_selectedLine.color),
+      updatedAt: DateTime.now(),
     );
   }
 
@@ -958,6 +1040,11 @@ String _lineLabel(String lineName, int lineId) {
   return '${_lineNumber(lineName, lineId)}';
 }
 
+String _colorToHex(Color color) {
+  final value = color.toARGB32() & 0xFFFFFF;
+  return '#${value.toRadixString(16).padLeft(6, '0').toUpperCase()}';
+}
+
 class _RailStatusMessage extends StatelessWidget {
   const _RailStatusMessage({required this.message});
 
@@ -995,6 +1082,43 @@ class _MetroEyeHeader extends StatelessWidget {
         const SizedBox(width: 8),
         Text('MetroEye', style: Theme.of(context).textTheme.titleMedium),
       ],
+    );
+  }
+}
+
+class _FavoriteToggleButton extends StatelessWidget {
+  const _FavoriteToggleButton({
+    required this.isFavorite,
+    required this.color,
+    required this.onPressed,
+  });
+
+  final bool isFavorite;
+  final Color color;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 42,
+      height: 42,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+          border: Border.all(color: AppColors.gray2),
+        ),
+        child: IconButton(
+          onPressed: onPressed,
+          padding: EdgeInsets.zero,
+          visualDensity: VisualDensity.compact,
+          icon: Icon(
+            isFavorite ? Icons.star_rounded : Icons.star_border_rounded,
+            size: 23,
+            color: isFavorite ? AppColors.warning : color,
+          ),
+        ),
+      ),
     );
   }
 }
