@@ -1,4 +1,4 @@
-package click.metroeye.app.metroeye_flutter
+package kr.kro.metroeye.app
 
 import io.flutter.embedding.android.FlutterActivity
 

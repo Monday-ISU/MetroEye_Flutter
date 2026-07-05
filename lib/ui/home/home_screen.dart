@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:metroeye_flutter/core/ads/admob_banner.dart';
 import 'package:metroeye_flutter/core/ads/admob_config.dart';
 import 'package:metroeye_flutter/core/device/device_session_service.dart';
+import 'package:metroeye_flutter/core/line/line_display.dart';
 import 'package:metroeye_flutter/core/line/line_model.dart';
 import 'package:metroeye_flutter/core/line/line_service.dart';
 import 'package:metroeye_flutter/core/station/station_search_storage.dart';
@@ -817,7 +818,7 @@ class _StationSearchResultTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 2),
-      leading: _LineBadge(label: _lineBadgeLabel(lineName), color: lineColor),
+      leading: _LineBadge(label: lineBadgeLabel(lineName), color: lineColor),
       title: Text(stationName, style: AppTypography.body3),
       subtitle:
           showLineName
@@ -899,19 +900,6 @@ String _lineColorForId(int lineId, List<LineModel> lines) {
   }
 
   return '#49729B';
-}
-
-String _lineBadgeLabel(String lineName) {
-  if (lineName.contains('경의중앙')) {
-    return '경중';
-  }
-
-  final match = RegExp(r'\d+').firstMatch(lineName);
-  if (match != null) {
-    return match.group(0)!;
-  }
-
-  return lineName.length > 2 ? lineName.substring(0, 2) : lineName;
 }
 
 Color _colorFromHex(String hex) {

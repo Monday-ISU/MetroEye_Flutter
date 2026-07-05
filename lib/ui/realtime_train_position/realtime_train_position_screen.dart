@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:metroeye_flutter/core/ads/admob_banner.dart';
 import 'package:metroeye_flutter/core/ads/admob_config.dart';
+import 'package:metroeye_flutter/core/line/line_display.dart';
 import 'package:metroeye_flutter/core/station/adjacent_station_model.dart';
 import 'package:metroeye_flutter/core/station/station_api_service.dart';
 import 'package:metroeye_flutter/core/station/station_cache_storage.dart';
@@ -21,7 +22,7 @@ class RealtimeTrainPositionLine {
   final String lineName;
   final Color color;
 
-  String get label => _lineLabel(lineName, lineId);
+  String get label => lineBadgeLabel(lineName);
 }
 
 class RealtimeTrainPositionScreen extends StatefulWidget {
@@ -1027,22 +1028,6 @@ int _currentStationSlotIndex({required bool isPrev}) {
   }
 
   return 0;
-}
-
-int _lineNumber(String lineName, int lineId) {
-  final match = RegExp(r'\d+').firstMatch(lineName);
-  if (match != null) {
-    return int.parse(match.group(0)!);
-  }
-  return lineId;
-}
-
-String _lineLabel(String lineName, int lineId) {
-  if (lineId == 10 || lineName.contains('경의중앙')) {
-    return '경중';
-  }
-
-  return '${_lineNumber(lineName, lineId)}';
 }
 
 String _colorToHex(Color color) {
