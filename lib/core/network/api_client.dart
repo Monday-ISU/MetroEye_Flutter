@@ -6,7 +6,7 @@ import 'package:metroeye_flutter/core/network/auth_recovery_interceptor.dart';
 import 'package:metroeye_flutter/core/network/client_version_interceptor.dart';
 
 class ApiClient {
-  static const String baseUrl = 'https://dev-api.metroeye.click';
+  static const String baseUrl = 'https://dev-api.metroeye.kro.kr';
 
   static BaseOptions _baseOptions() {
     return BaseOptions(
