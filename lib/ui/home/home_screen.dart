@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:metroeye_flutter/core/ads/admob_banner.dart';
+import 'package:metroeye_flutter/core/ads/admob_config.dart';
 import 'package:metroeye_flutter/core/device/device_session_service.dart';
 import 'package:metroeye_flutter/core/line/line_model.dart';
 import 'package:metroeye_flutter/core/line/line_service.dart';
@@ -476,6 +478,9 @@ class _HomeScreenState extends State<HomeScreen> {
         );
 
         return Scaffold(
+          bottomNavigationBar: const AdMobBanner(
+            placement: AdMobBannerPlacement.homeSearch,
+          ),
           body: SafeArea(
             child: ListView(
               padding: const EdgeInsets.all(16),

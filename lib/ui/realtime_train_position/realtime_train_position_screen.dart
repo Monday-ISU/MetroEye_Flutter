@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:metroeye_flutter/core/ads/admob_banner.dart';
+import 'package:metroeye_flutter/core/ads/admob_config.dart';
 import 'package:metroeye_flutter/core/station/adjacent_station_model.dart';
 import 'package:metroeye_flutter/core/station/station_api_service.dart';
 import 'package:metroeye_flutter/core/station/station_cache_storage.dart';
@@ -103,6 +105,9 @@ class _RealtimeTrainPositionScreenState
 
     return Scaffold(
       backgroundColor: AppColors.gray1,
+      bottomNavigationBar: const AdMobBanner(
+        placement: AdMobBannerPlacement.realtimeTrainPosition,
+      ),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(16),
